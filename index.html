@@ -542,8 +542,14 @@ const state = {
   selOv: null,
   projectId: null,
   projectName: "",
+  exportW: 720,
+  exportH: 1280,
+  rendering: false,
 };
 let idSeq = 1;
+/* çizim yalnızca gerektiğinde: oynatmıyorken kareyi tekrar tekrar boyama */
+let needDraw = true;
+const invalidate = () => { needDraw = true; };
 let pendingTool = null;   // ana ekran kısayolundan gelinince açılacak panel
 let lastSavedJson = "";
 
@@ -669,6 +675,7 @@ function addMedia(file) {
       v.preload = "auto";
       v.playsInline = true; v.setAttribute("playsinline", "");
       v.crossOrigin = "anonymous";
+      v.addEventListener("seeked", invalidate);   // sarma bitince kareyi tazele
       v.onloadedmetadata = async () => {
         v.onloadedmetadata = null;
         const dur = await resolveDuration(v);
@@ -739,9 +746,12 @@ function grabThumb(clip) {
 /* ---------- çizim ---------- */
 function buildFilter(c) {
   const a = c.adjust;
-  const adj = `brightness(${a.b}) contrast(${a.c}) saturate(${a.s})`;
-  const f = FILTERS[c.filter]?.css || "";
-  return (f + " " + adj).trim();
+  let f = FILTERS[c.filter]?.css || "";
+  /* ctx.filter pahalı: ayar varsayılandaysa hiç filtre uygulama */
+  if (a.b !== 1 || a.c !== 1 || a.s !== 1) {
+    f += ` brightness(${a.b}) contrast(${a.c}) saturate(${a.s})`;
+  }
+  return f.trim();
 }
 
 /* klibin karesini kapla-sığdır + dönüşüm/saydamlık/kırpma ile çiz */
@@ -759,19 +769,23 @@ function drawClipImage(c, o = {}) {
   ctx.translate(W / 2 + (o.tx || 0), H / 2 + (o.ty || 0));
   const s = o.scale || 1;
   ctx.scale(s, s);
-  ctx.filter = buildFilter(c);
+  const f = buildFilter(c);
+  if (f) ctx.filter = f;
   ctx.drawImage(src, -dw / 2, -dh / 2, dw, dh);
   ctx.restore();
-  ctx.filter = "none";
+  if (f) ctx.filter = "none";
 }
+
+/* çözünürlükten bağımsız efekt ölçeği (önizleme küçük canvas'ta çalışır) */
+const fxScale = () => Math.min(canvas.width, canvas.height) / 720;
 
 /* efektin klip çizimine uyguladığı dönüşüm (sarsıntı, nabız, ken burns) */
 function effectTransform(c, into) {
-  const W = canvas.width;
+  const W = canvas.width, k = fxScale();
   switch (c.effect) {
     case "shake": {
       const f = Math.floor(state.t * 18);
-      return { tx: (n1(f) - .5) * 16, ty: (n1(f + 31) - .5) * 16, scale: 1.03 };
+      return { tx: (n1(f) - .5) * 16 * k, ty: (n1(f + 31) - .5) * 16 * k, scale: 1.03 };
     }
     case "pulse":
       return { scale: 1 + .045 * Math.sin(state.t * Math.PI * 2 * 1.3) };
@@ -786,7 +800,7 @@ function effectTransform(c, into) {
 
 /* klip üstüne çizilen efekt katmanları */
 function drawEffectOverlay(c) {
-  const W = canvas.width, H = canvas.height, t = state.t;
+  const W = canvas.width, H = canvas.height, t = state.t, k = fxScale();
   switch (c.effect) {
     case "vignette": {
       const g = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * .35, W / 2, H / 2, Math.max(W, H) * .72);
@@ -802,14 +816,16 @@ function drawEffectOverlay(c) {
     case "vhs": {
       drawNoise(.06);
       ctx.fillStyle = "rgba(0,0,0,.14)";
-      for (let y = 0; y < H; y += 4) ctx.fillRect(0, y, W, 1.4);
-      const by = (t * 90) % (H + 160) - 80;
-      const g = ctx.createLinearGradient(0, by, 0, by + 80);
+      const step = Math.max(4 * k, 2);
+      for (let y = 0; y < H; y += step) ctx.fillRect(0, y, W, 1.4 * k);
+      const bh = 80 * k;
+      const by = (t * 90 * k) % (H + bh * 2) - bh;
+      const g = ctx.createLinearGradient(0, by, 0, by + bh);
       g.addColorStop(0, "rgba(255,255,255,0)");
       g.addColorStop(.5, "rgba(255,255,255,.07)");
       g.addColorStop(1, "rgba(255,255,255,0)");
       ctx.fillStyle = g;
-      ctx.fillRect(0, by, W, 80);
+      ctx.fillRect(0, by, W, bh);
       ctx.fillStyle = "rgba(0,255,230,.03)";
       ctx.fillRect(0, 0, W, H);
       break;
@@ -821,8 +837,8 @@ function drawEffectOverlay(c) {
         for (let i = 0; i < k; i++) {
           const seed = Math.floor(t * 12) * 10 + i;
           const sy = n1(seed) * H;
-          const sh = 8 + n1(seed + 1) * 46;
-          const dx = (n1(seed + 2) - .5) * 60;
+          const sh = (8 + n1(seed + 1) * 46) * k;
+          const dx = (n1(seed + 2) - .5) * 60 * k;
           try { ctx.drawImage(canvas, 0, sy, W, sh, dx, sy, W, sh); } catch (_) {}
           ctx.fillStyle = i % 2 ? "rgba(255,0,80,.08)" : "rgba(0,255,255,.08)";
           ctx.fillRect(0, sy, W, sh);
@@ -832,27 +848,27 @@ function drawEffectOverlay(c) {
     }
     case "snow":
       for (let i = 0; i < 55; i++) {
-        const sp = 26 + n1(i + 7) * 55;
-        const x = (n1(i) * W + Math.sin(t * .8 + i) * 26 + W) % W;
+        const sp = (26 + n1(i + 7) * 55) * k;
+        const x = (n1(i) * W + Math.sin(t * .8 + i) * 26 * k + W) % W;
         const y = (n1(i + 99) * H + t * sp) % H;
         ctx.globalAlpha = .55 + n1(i + 3) * .4;
         ctx.fillStyle = "#fff";
         ctx.beginPath();
-        ctx.arc(x, y, 1.2 + n1(i + 5) * 2.4, 0, 7);
+        ctx.arc(x, y, (1.2 + n1(i + 5) * 2.4) * k, 0, 7);
         ctx.fill();
       }
       ctx.globalAlpha = 1;
       break;
     case "rain":
       ctx.strokeStyle = "rgba(180,210,255,.4)";
-      ctx.lineWidth = 1.4;
+      ctx.lineWidth = 1.4 * k;
       for (let i = 0; i < 70; i++) {
-        const sp = 380 + n1(i + 9) * 260;
-        const x = (n1(i) * W + t * 60) % W;
+        const sp = (380 + n1(i + 9) * 260) * k;
+        const x = (n1(i) * W + t * 60 * k) % W;
         const y = (n1(i + 50) * H + t * sp) % H;
         ctx.beginPath();
         ctx.moveTo(x, y);
-        ctx.lineTo(x - 3, y + 15);
+        ctx.lineTo(x - 3 * k, y + 15 * k);
         ctx.stroke();
       }
       break;
@@ -861,10 +877,10 @@ function drawEffectOverlay(c) {
         const tw = (Math.sin(t * 3.2 + i * 2.1) + 1) / 2;
         if (tw < .25) continue;
         const x = n1(i) * W, y = n1(i + 31) * H;
-        const r = (1.5 + n1(i + 13) * 3.5) * tw;
+        const r = (1.5 + n1(i + 13) * 3.5) * tw * k;
         ctx.globalAlpha = tw * .95;
         ctx.strokeStyle = "#fff";
-        ctx.lineWidth = 1.4;
+        ctx.lineWidth = 1.4 * k;
         ctx.beginPath();
         ctx.moveTo(x - r * 2, y); ctx.lineTo(x + r * 2, y);
         ctx.moveTo(x, y - r * 2); ctx.lineTo(x, y + r * 2);
@@ -1065,11 +1081,12 @@ function drawFrame() {
 }
 
 /* ---------- oynatma motoru ---------- */
-let lastTick = 0;
+let lastTick = 0, lastLabel = "";
 function tick(now) {
   requestAnimationFrame(tick);
   const dt = Math.min((now - lastTick) / 1000, .1);
   lastTick = now;
+  if (state.rendering) return;   // offline render kendi döngüsünü kullanır
   if (state.playing) {
     state.t += dt;
     if (state.t >= totalDur()) {
@@ -1079,8 +1096,12 @@ function tick(now) {
     syncMedia();
     scrollToTime(true);
   }
-  drawFrame();
-  $("#timeLabel").textContent = fmt(state.t) + " / " + fmt(totalDur());
+  if (state.playing || needDraw) {
+    drawFrame();
+    needDraw = false;
+  }
+  const label = fmt(state.t) + " / " + fmt(totalDur());
+  if (label !== lastLabel) { lastLabel = label; $("#timeLabel").textContent = label; }
 }
 requestAnimationFrame(t => { lastTick = t; tick(t); });
 
@@ -1154,6 +1175,7 @@ function seekTo(t, force) {
   }
   prepTransitionFrame();
   scrollToTime(true);
+  invalidate();
 }
 
 /* Geçiş penceresi içindeysek önceki klibin karesini son konumuna sar
@@ -1198,9 +1220,11 @@ tlScroll.addEventListener("scroll", () => {
     }
   }
   prepTransitionFrame();
+  invalidate();
 });
 
 function renderTimeline() {
+  invalidate();
   tlPad = tlScroll.clientWidth / 2;
   const content = $("#tlContent");
   content.style.paddingLeft = tlPad + "px";
@@ -1303,6 +1327,14 @@ function renderTimeline() {
 
 function renderAll() { renderTimeline(); scrollToTime(true); }
 
+/* zaman çizelgesi yeniden çizimini rAF'e sıkıştır (sürüklemede jank önler) */
+let tlScheduled = false;
+function scheduleTimeline() {
+  if (tlScheduled) return;
+  tlScheduled = true;
+  requestAnimationFrame(() => { tlScheduled = false; renderTimeline(); });
+}
+
 /* kırpma tutamaçları */
 function bindTrim(handle, clip, side) {
   handle.addEventListener("pointerdown", e => {
@@ -1318,7 +1350,7 @@ function bindTrim(handle, clip, side) {
         const maxOut = clip.type === "image" ? 30 : clip.natDur;
         clip.out = clamp(orig.out + dxSec, clip.in + .15, maxOut);
       }
-      renderTimeline();
+      scheduleTimeline();   // sürükleme sırasında kare başına tek DOM güncellemesi
       seekTo(Math.min(state.t, totalDur()));
     };
     const up = () => {
@@ -1819,24 +1851,52 @@ function openAspectSheet() {
 }
 function applyAspect() {
   const [w, h] = ASPECTS[state.aspect];
-  canvas.width = w; canvas.height = h;
-  noisePat = null;   // desen ölçeği canvas'a bağlı; yeniden üret
+  state.exportW = w; state.exportH = h;
   fitPreview();
+  setCanvasResolution(false);
   drawFrame();
+}
+/* Önizlemede canvas ekran boyutunda çalışır (kat kat daha az piksel =
+   akıcı düzenleme); dışa aktarmada tam çözünürlüğe geçilir. */
+function setCanvasResolution(forExport) {
+  if (forExport) {
+    canvas.width = state.exportW;
+    canvas.height = state.exportH;
+  } else {
+    const box = $("#previewBox");
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const w = Math.min(Math.max(Math.round(box.clientWidth * dpr), 180), state.exportW);
+    canvas.width = w;
+    canvas.height = Math.round(w * state.exportH / state.exportW);
+  }
+  noisePat = null;   // desen ölçeği canvas'a bağlı; yeniden üret
+  invalidate();
 }
 function fitPreview() {
   const wrap = $("#previewWrap");
   const availW = wrap.clientWidth - 16, availH = wrap.clientHeight - 16;
-  const ar = canvas.width / canvas.height;
+  const ar = state.exportW / state.exportH;
   let w = availW, h = w / ar;
   if (h > availH) { h = availH; w = h * ar; }
   const box = $("#previewBox");
   box.style.width = w + "px";
   box.style.height = h + "px";
 }
-window.addEventListener("resize", () => { fitPreview(); renderTimeline(); scrollToTime(true); });
+window.addEventListener("resize", () => {
+  fitPreview();
+  if (!state.rendering) setCanvasResolution(false);
+  renderTimeline();
+  scrollToTime(true);
+});
 
-/* ---------- Dışa aktarma ---------- */
+/* ============================================================
+   Dışa aktarma
+   1) Hızlı render (CapCut tarzı): WebCodecs ile kare kare offline
+      kodlama + offline ses miksajı → oynatma takılsa bile çıktı
+      her zaman akıcıdır.
+   2) Yedek: MediaRecorder ile gerçek zamanlı kayıt (eski yöntem,
+      WebCodecs olmayan tarayıcılar için).
+   ============================================================ */
 let audioCtx = null, exportAbort = false, recorder = null;
 const srcNodes = new Map();
 
@@ -1850,14 +1910,395 @@ $("#modalCancel").onclick = () => {
   exportAbort = true;
   if (recorder && recorder.state !== "inactive") recorder.stop();
   $("#modal").classList.remove("open");
+  finishExportUI();
   pause();
 };
+
+function exportModal(title, desc) {
+  $("#modalTitle").textContent = title;
+  $("#modalDesc").textContent = desc;
+  $("#dlLink").style.display = "none";
+  $("#modalCancel").style.display = "block";
+  $("#modalCancel").textContent = "İptal";
+  $("#progressInner").style.width = "0%";
+  $("#modal").classList.add("open");
+}
+function exportDone(blob, ext) {
+  const url = URL.createObjectURL(blob);
+  const dl = $("#dlLink");
+  dl.href = url;
+  dl.download = "pisan-cut-" + Date.now() + "." + ext;
+  dl.style.display = "block";
+  $("#modalTitle").textContent = "Hazır! 🎉";
+  $("#modalDesc").textContent = "Videon (" + (blob.size / 1048576).toFixed(1) + " MB) indirilmeye hazır.";
+  $("#modalCancel").textContent = "Kapat";
+  $("#progressInner").style.width = "100%";
+}
+function finishExportUI() {
+  state.rendering = false;
+  setCanvasResolution(false);
+  invalidate();
+}
 
 async function startExport() {
   if (!state.clips.length) return;
   pause();
+  saveProject();
   exportAbort = false;
 
+  /* proje ses içeriyor mu? (opus desteklenmiyorsa gerçek zamanlıya düş) */
+  const hasAudio = state.clips.some(c => c.type === "video" && c.volume > 0) || !!state.music;
+
+  if (window.VideoEncoder) {
+    let codec = null;
+    for (const c of ["vp09.00.10.08", "vp8"]) {
+      try {
+        const s = await VideoEncoder.isConfigSupported({ codec: c, width: state.exportW, height: state.exportH });
+        if (s.supported) { codec = c; break; }
+      } catch (_) {}
+    }
+    let opusOk = false;
+    if (window.AudioEncoder) {
+      try {
+        const s = await AudioEncoder.isConfigSupported({ codec: "opus", sampleRate: 48000, numberOfChannels: 2, bitrate: 128000 });
+        opusOk = !!s.supported;
+      } catch (_) {}
+    }
+    if (codec && (!hasAudio || opusOk)) {
+      try {
+        await fastRender(codec, hasAudio && opusOk);
+        return;
+      } catch (err) {
+        finishExportUI();
+        if (exportAbort) return;
+        console.error("fastRender:", err);
+        toast("Hızlı render başarısız, gerçek zamanlı kayda geçildi");
+      }
+    }
+  }
+  await realtimeExport();
+}
+
+/* ---------- hızlı render: yardımcılar ---------- */
+function seekVideoExact(v, target) {
+  return new Promise(res => {
+    if (v.readyState >= 2 && Math.abs(v.currentTime - target) < .01) return res();
+    let done = false;
+    const fin = () => {
+      if (done) return;
+      done = true;
+      v.removeEventListener("seeked", fin);
+      clearTimeout(to);
+      res();
+    };
+    const to = setTimeout(fin, 900);
+    v.addEventListener("seeked", fin);
+    try { v.currentTime = target; } catch (_) { fin(); }
+  });
+}
+
+/* t anındaki kareyi kesin olarak hazırla (kare kare render için) */
+async function renderSeek(t) {
+  state.t = t;
+  const loc = locate(t);
+  if (!loc) return;
+  if (loc.clip.type === "video") {
+    await seekVideoExact(loc.clip.el, loc.clip.in + loc.offset * loc.clip.speed);
+  }
+  const idx = state.clips.indexOf(loc.clip);
+  const prev = idx > 0 ? state.clips[idx - 1] : null;
+  if (prev && prev.trans.type !== "none" && (t - clipStart(loc.clip)) < prev.trans.dur && prev.type === "video") {
+    await seekVideoExact(prev.el, Math.max(prev.out - .05, prev.in));
+  }
+}
+
+const audioBufCache = new Map();
+async function decodeMediaAudio(mediaId) {
+  if (audioBufCache.has(mediaId)) return audioBufCache.get(mediaId);
+  let buf = null;
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const rec = await idbGet("media", mediaId);
+    if (rec) buf = await audioCtx.decodeAudioData(await rec.blob.arrayBuffer());
+  } catch (_) { buf = null; }
+  audioBufCache.set(mediaId, buf);
+  return buf;
+}
+
+/* tüm ses parçalarını offline miksle → tek AudioBuffer */
+async function mixAudioOffline(totalSec) {
+  const sr = 48000;
+  const oac = new OfflineAudioContext(2, Math.max(Math.ceil(totalSec * sr), sr), sr);
+  let any = false, t0 = 0;
+  for (const c of state.clips) {
+    const d = clipDur(c);
+    if (c.type === "video" && c.volume > 0 && c.mediaId) {
+      const buf = await decodeMediaAudio(c.mediaId);
+      if (buf) {
+        const src = oac.createBufferSource();
+        src.buffer = buf;
+        src.playbackRate.value = c.speed;
+        const g = oac.createGain();
+        g.gain.value = c.volume;
+        src.connect(g).connect(oac.destination);
+        try { src.start(t0, Math.min(c.in, buf.duration), Math.max(c.out - c.in, .01)); any = true; } catch (_) {}
+      }
+    }
+    t0 += d;
+  }
+  if (state.music && state.music.mediaId && state.music.volume > 0) {
+    const buf = await decodeMediaAudio(state.music.mediaId);
+    if (buf) {
+      const src = oac.createBufferSource();
+      src.buffer = buf;
+      const g = oac.createGain();
+      g.gain.value = state.music.volume;
+      src.connect(g).connect(oac.destination);
+      try { src.start(0, 0, Math.min(buf.duration, totalSec)); any = true; } catch (_) {}
+    }
+  }
+  if (!any) return null;
+  return oac.startRendering();
+}
+
+/* ---------- minimal WebM (Matroska) muxer ---------- */
+function mkWebm(opts) {
+  const { width, height, codecId, durationMs } = opts;
+  const chunks = [];   // {track, ts(ms), key, data}
+
+  const u8cat = arrs => {
+    let n = 0;
+    for (const a of arrs) n += a.length;
+    const out = new Uint8Array(n);
+    let o = 0;
+    for (const a of arrs) { out.set(a, o); o += a.length; }
+    return out;
+  };
+  const idBytes = id => {
+    const b = [];
+    while (id > 0) { b.unshift(id & 0xff); id = Math.floor(id / 256); }
+    return new Uint8Array(b);
+  };
+  const vint = n => {   // EBML boyut kodlaması
+    let len = 1;
+    while (n >= Math.pow(2, 7 * len) - 1 && len < 8) len++;
+    const b = new Uint8Array(len);
+    for (let i = 0; i < len; i++) b[len - 1 - i] = Math.floor(n / Math.pow(2, 8 * i)) % 256;
+    b[0] |= 0x80 >> (len - 1);
+    return b;
+  };
+  const uintBytes = n => {
+    const b = [];
+    do { b.unshift(n % 256); n = Math.floor(n / 256); } while (n > 0);
+    return new Uint8Array(b);
+  };
+  const f64 = n => {
+    const b = new Uint8Array(8);
+    new DataView(b.buffer).setFloat64(0, n);
+    return b;
+  };
+  const str = s => new TextEncoder().encode(s);
+  const el = (id, payload) => {
+    const p = payload instanceof Uint8Array ? payload : u8cat(payload);
+    return u8cat([idBytes(id), vint(p.length), p]);
+  };
+
+  return {
+    addVideo(chunk) {
+      const d = new Uint8Array(chunk.byteLength);
+      chunk.copyTo(d);
+      chunks.push({ track: 1, ts: chunk.timestamp / 1000, key: chunk.type === "key", data: d });
+    },
+    addAudio(chunk) {
+      const d = new Uint8Array(chunk.byteLength);
+      chunk.copyTo(d);
+      chunks.push({ track: 2, ts: chunk.timestamp / 1000, key: true, data: d });
+    },
+    finish({ hasAudio, opusHead }) {
+      const header = el(0x1A45DFA3, [
+        el(0x4286, uintBytes(1)),  // EBMLVersion
+        el(0x42F7, uintBytes(1)),  // EBMLReadVersion
+        el(0x42F2, uintBytes(4)),  // EBMLMaxIDLength
+        el(0x42F3, uintBytes(8)),  // EBMLMaxSizeLength
+        el(0x4282, str("webm")),   // DocType
+        el(0x4287, uintBytes(4)),  // DocTypeVersion
+        el(0x4285, uintBytes(2)),  // DocTypeReadVersion
+      ]);
+      const info = el(0x1549A966, [
+        el(0x2AD7B1, uintBytes(1000000)),  // TimecodeScale: 1 ms
+        el(0x4489, f64(durationMs)),       // Duration
+        el(0x4D80, str("PisanCut")),
+        el(0x5741, str("PisanCut")),
+      ]);
+      const videoTrack = el(0xAE, [
+        el(0xD7, uintBytes(1)),    // TrackNumber
+        el(0x73C5, uintBytes(1)),  // TrackUID
+        el(0x83, uintBytes(1)),    // TrackType: video
+        el(0x86, str(codecId)),
+        el(0xE0, [ el(0xB0, uintBytes(width)), el(0xBA, uintBytes(height)) ]),
+      ]);
+      const trackList = [videoTrack];
+      if (hasAudio) {
+        trackList.push(el(0xAE, [
+          el(0xD7, uintBytes(2)),
+          el(0x73C5, uintBytes(2)),
+          el(0x83, uintBytes(2)),    // TrackType: audio
+          el(0x86, str("A_OPUS")),
+          el(0x56AA, uintBytes(6500000)),    // CodecDelay (ns)
+          el(0x56BB, uintBytes(80000000)),   // SeekPreRoll (ns)
+          el(0x63A2, opusHead),              // CodecPrivate: OpusHead
+          el(0xE1, [ el(0xB5, f64(48000)), el(0x9F, uintBytes(2)) ]),
+        ]));
+      }
+      const tracks = el(0x1654AE6B, trackList);
+
+      chunks.sort((a, b) => (a.ts - b.ts) || (a.track - b.track));
+      const clusters = [];
+      let cur = null, curTs = 0;
+      const flushCluster = () => {
+        if (!cur) return;
+        clusters.push(el(0x1F43B675, [ el(0xE7, uintBytes(Math.round(curTs))), ...cur ]));
+        cur = null;
+      };
+      for (const c of chunks) {
+        const needNew = !cur ||
+          (c.track === 1 && c.key && c.ts - curTs >= 1000) ||
+          (c.ts - curTs > 30000);
+        if (needNew) { flushCluster(); cur = []; curTs = c.ts; }
+        const rel = Math.max(Math.round(c.ts - curTs), 0);
+        const head = new Uint8Array(4);
+        head[0] = 0x80 | c.track;
+        head[1] = (rel >> 8) & 0xff;
+        head[2] = rel & 0xff;
+        head[3] = c.key ? 0x80 : 0x00;
+        cur.push(el(0xA3, u8cat([head, c.data])));   // SimpleBlock
+      }
+      flushCluster();
+
+      /* Segment: bilinmeyen boyut (canlı muxer'lar gibi) — geri yazma gerekmez */
+      const segHead = u8cat([idBytes(0x18538067), new Uint8Array([0x01, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff])]);
+      return new Blob([header, segHead, info, tracks, ...clusters], { type: "video/webm" });
+    },
+  };
+}
+
+const OPUS_HEAD_DEFAULT = (() => {
+  const b = new Uint8Array(19);
+  b.set(new TextEncoder().encode("OpusHead"), 0);
+  b[8] = 1;             // sürüm
+  b[9] = 2;             // kanal
+  b[10] = 0x38; b[11] = 0x01;   // preSkip = 312 (LE)
+  b[12] = 0x80; b[13] = 0xBB; b[14] = 0x00; b[15] = 0x00;  // 48000 Hz (LE)
+  return b;             // gain=0, mapping=0
+})();
+
+/* ---------- hızlı render (kare kare, offline) ---------- */
+async function fastRender(codec, withAudio) {
+  const total = totalDur();
+  const fps = 30;
+  const frames = Math.max(Math.ceil(total * fps), 1);
+  exportModal("Render alınıyor…", "Kare kare işleniyor — takılma olmadan, tam kalitede.");
+
+  state.rendering = true;
+  pause();
+  setCanvasResolution(true);
+
+  let opusHead = OPUS_HEAD_DEFAULT;
+  let audioIncluded = false;
+  const muxer = mkWebm({
+    width: state.exportW, height: state.exportH,
+    codecId: codec === "vp8" ? "V_VP8" : "V_VP9",
+    durationMs: total * 1000,
+  });
+
+  /* 1) ses: offline miksle ve kodla */
+  let audioBuffer = null;
+  if (withAudio) {
+    $("#modalDesc").textContent = "Ses miksleniyor…";
+    try { audioBuffer = await mixAudioOffline(total); } catch (_) { audioBuffer = null; }
+  }
+  if (exportAbort) throw new Error("abort");
+  const audioChunks = [];
+  if (audioBuffer) {
+    const aenc = new AudioEncoder({
+      output: (chunk, meta) => {
+        const desc = meta && meta.decoderConfig && meta.decoderConfig.description;
+        if (desc) {
+          opusHead = desc instanceof ArrayBuffer
+            ? new Uint8Array(desc)
+            : new Uint8Array(desc.buffer, desc.byteOffset, desc.byteLength);
+        }
+        audioChunks.push(chunk);
+      },
+      error: e => console.error("AudioEncoder:", e),
+    });
+    aenc.configure({ codec: "opus", sampleRate: 48000, numberOfChannels: 2, bitrate: 128000 });
+    const sr = 48000, block = 960;   // 20 ms opus çerçevesi
+    const ch0 = audioBuffer.getChannelData(0);
+    const ch1 = audioBuffer.numberOfChannels > 1 ? audioBuffer.getChannelData(1) : ch0;
+    const maxSamples = Math.min(audioBuffer.length, Math.ceil(total * sr));
+    for (let off = 0; off < maxSamples; off += block) {
+      const n = Math.min(block, maxSamples - off);
+      const data = new Float32Array(n * 2);
+      data.set(ch0.subarray(off, off + n), 0);
+      data.set(ch1.subarray(off, off + n), n);
+      const ad = new AudioData({
+        format: "f32-planar", sampleRate: sr,
+        numberOfFrames: n, numberOfChannels: 2,
+        timestamp: Math.round(off / sr * 1e6), data,
+      });
+      aenc.encode(ad);
+      ad.close();
+    }
+    await aenc.flush();
+    aenc.close();
+    audioIncluded = audioChunks.length > 0;
+    for (const c of audioChunks) muxer.addAudio(c);
+  }
+  if (exportAbort) throw new Error("abort");
+
+  /* 2) video: her kareyi kesin zamana sarıp kodla */
+  let encError = null;
+  const venc = new VideoEncoder({
+    output: chunk => muxer.addVideo(chunk),
+    error: e => { encError = e; },
+  });
+  venc.configure({
+    codec, width: state.exportW, height: state.exportH,
+    bitrate: 6_000_000, framerate: fps,
+  });
+
+  for (let i = 0; i < frames; i++) {
+    if (exportAbort) { venc.close(); throw new Error("abort"); }
+    if (encError) { throw encError; }
+    const t = Math.min(i / fps, Math.max(total - .001, 0));
+    await renderSeek(t);
+    drawFrame();
+    const frame = new VideoFrame(canvas, {
+      timestamp: Math.round(i * 1e6 / fps),
+      duration: Math.round(1e6 / fps),
+    });
+    venc.encode(frame, { keyFrame: i % 150 === 0 });
+    frame.close();
+    /* kodlayıcı kuyruğu şişmesin */
+    while (venc.encodeQueueSize > 4) await new Promise(r => setTimeout(r, 4));
+    if (i % 5 === 0) {
+      $("#progressInner").style.width = (i / frames * 100).toFixed(1) + "%";
+      $("#modalDesc").textContent = `Kare ${i + 1} / ${frames}`;
+    }
+  }
+  await venc.flush();
+  venc.close();
+  if (exportAbort) throw new Error("abort");
+
+  const blob = muxer.finish({ hasAudio: audioIncluded, opusHead });
+  finishExportUI();
+  exportDone(blob, "webm");
+  seekTo(0, true);
+}
+
+/* ---------- yedek: gerçek zamanlı kayıt (MediaRecorder) ---------- */
+async function realtimeExport() {
   const mimes = [
     "video/webm;codecs=vp9,opus",
     "video/webm;codecs=vp8,opus",
@@ -1868,7 +2309,7 @@ async function startExport() {
   if (!mime) { toast("Bu tarayıcı video kaydını desteklemiyor"); return; }
   const ext = mime.startsWith("video/mp4") ? "mp4" : "webm";
 
-  // ses miksajı
+  setCanvasResolution(true);
   try {
     audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
     await audioCtx.resume();
@@ -1894,14 +2335,7 @@ async function startExport() {
   recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 6_000_000 });
   recorder.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
 
-  const modal = $("#modal");
-  $("#modalTitle").textContent = "Dışa aktarılıyor…";
-  $("#modalDesc").textContent = "Video gerçek zamanlı işleniyor, sekmeyi kapatma.";
-  $("#dlLink").style.display = "none";
-  $("#modalCancel").style.display = "block";
-  $("#modalCancel").textContent = "İptal";
-  $("#progressInner").style.width = "0%";
-  modal.classList.add("open");
+  exportModal("Dışa aktarılıyor…", "Video gerçek zamanlı işleniyor, sekmeyi kapatma.");
 
   const done = new Promise(res => recorder.onstop = res);
   seekTo(0, true);
@@ -1923,20 +2357,12 @@ async function startExport() {
   if (recorder.state !== "inactive") recorder.stop();
   await done;
   pause();
+  finishExportUI();
 
   if (exportAbort) return;
 
   const blob = new Blob(chunks, { type: mime.split(";")[0] });
-  const url = URL.createObjectURL(blob);
-  const dl = $("#dlLink");
-  dl.href = url;
-  dl.download = "pisan-cut-" + Date.now() + "." + ext;
-  dl.style.display = "block";
-  $("#modalTitle").textContent = "Hazır! 🎉";
-  $("#modalDesc").textContent = "Videon (" + (blob.size / 1048576).toFixed(1) + " MB) indirilmeye hazır.";
-  $("#modalCancel").style.display = "block";
-  $("#modalCancel").textContent = "Kapat";
-  $("#progressInner").style.width = "100%";
+  exportDone(blob, ext);
 }
 
 /* ---------- proje kaydet / yükle ---------- */
@@ -2016,6 +2442,7 @@ async function openProject(rec) {
       el = document.createElement("video");
       el.preload = "auto";
       el.playsInline = true; el.setAttribute("playsinline", "");
+      el.addEventListener("seeked", invalidate);
       el.src = url;
       await new Promise(r => { el.onloadedmetadata = r; el.onerror = r; });
     }

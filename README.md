@@ -25,16 +25,17 @@ Ayarlar → Pages → dalı seç → yayınla.
 - 😀 **Bindirme objeler**: Emoji çıkartmaları, giriş animasyonu + sürekli hareket (süzülme, dönme, nabız…), boyut/süre ayarı, sürükleyerek taşıma
 - 🎵 **Müzik**: Cihazından ses dosyası ekle, seviyesini ayarla
 - ⬛ **En-boy oranı**: 9:16, 16:9, 1:1, 4:5
-- 📤 **Dışa aktarma**: Ses miksajıyla birlikte WebM/MP4 (MediaRecorder) — geçişler, efektler ve animasyonlar dahil, sunucusuz
+- 📤 **Hızlı render (CapCut tarzı)**: WebCodecs destekleyen tarayıcılarda video kare kare offline kodlanır, ses offline mikslenir — önizleme taksa bile çıktı her zaman akıcıdır ve çoğu cihazda gerçek zamandan hızlı biter. WebCodecs yoksa MediaRecorder ile gerçek zamanlı kayda düşer.
+- ⚡ **Akıcı önizleme**: Düzenleme sırasında canvas ekran çözünürlüğünde çalışır (dışa aktarmada tam çözünürlüğe geçer), kare yalnızca gerektiğinde yeniden çizilir
 
 ## Nasıl çalışıyor?
 
 - Önizleme ve dışa aktarma tek bir `<canvas>` üzerinden çizilir; filtreler CSS filter, metinler canvas metni olarak işlenir.
-- Dışa aktarma `canvas.captureStream()` + Web Audio miksajı + `MediaRecorder` ile gerçek zamanlı kayıttır; süre, proje süresi kadardır.
-- Tarayıcının `MediaRecorder` desteğine göre WebM (VP9/VP8) ya da MP4 üretilir.
+- **Hızlı render**: her kare için videolar tam zamana sarılır, kare `VideoEncoder` (VP9/VP8) ile kodlanır; ses `OfflineAudioContext` ile mikslenip `AudioEncoder` (Opus) ile kodlanır ve dosya içindeki minimal Matroska/WebM muxer ile birleştirilir. Kare düşmesi mümkün değildir.
+- WebCodecs olmayan tarayıcılarda `canvas.captureStream()` + `MediaRecorder` ile gerçek zamanlı kayda düşülür.
 
 ## Sınırlamalar
 
-- Dışa aktarma gerçek zamanlıdır (5 dakikalık video ≈ 5 dakika sürer).
-- Kodek desteği tarayıcıya bağlıdır; iOS Safari MP4, Chrome/Android WebM üretir.
+- Hızlı render WebCodecs gerektirir (Chrome/Edge/Android WebView 94+, Safari 16.4+ kısmi); yoksa dışa aktarma gerçek zamanlı sürer.
+- Kodek desteği tarayıcıya bağlıdır; çıktı genellikle WebM'dir (yedek yolda iOS Safari MP4 üretebilir).
 - Projeler tarayıcının IndexedDB deposunda tutulur; tarayıcı verilerini/site verilerini silersen projeler de silinir ve başka cihazdan erişilemez.
