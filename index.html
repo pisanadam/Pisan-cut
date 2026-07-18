@@ -517,7 +517,7 @@
    ========================================================= */
 
 const $ = s => document.querySelector(s);
-const canvas = $("#canvas"), ctx = canvas.getContext("2d", { alpha: false });
+const canvas = $("#canvas"), ctx = canvas.getContext("2d", { alpha: false, desynchronized: true });
 
 /* en-boy oranları (oran olarak; gerçek boyut çözünürlük seçimiyle hesaplanır) */
 const ASPECTS = {
@@ -596,8 +596,9 @@ const state = {
   selOv: null,
   projectId: null,
   projectName: "",
-  resolution: 720,   // kısa kenar (480/720/1080)
+  resolution: 720,   // kısa kenar (480/720/1080/1440/2160)
   fps: 30,
+  upscale: false,    // açıkken çıktı %50 büyütülüp yüksek kaliteli ölçeklenir
   exportW: 720,
   exportH: 1280,
   rendering: false,
@@ -655,7 +656,7 @@ function snapState() {
     overlays: state.overlays.map(o => ({ ...o })),
     musics: state.musics.map(m => ({ ...m })),
     aspect: state.aspect, resolution: state.resolution, fps: state.fps,
-    leadGap: state.leadGap,
+    upscale: state.upscale, leadGap: state.leadGap,
   };
 }
 function stateJson() { try { return JSON.stringify(projectData()); } catch (_) { return String(Math.random()); } }
@@ -675,6 +676,7 @@ function applySnap(s) {
   state.selClip = null; state.selOv = null;
   const aspectChanged = state.aspect !== s.aspect || state.resolution !== s.resolution;
   state.aspect = s.aspect; state.resolution = s.resolution; state.fps = s.fps;
+  state.upscale = !!s.upscale;
   state.leadGap = s.leadGap || 0;
   if (aspectChanged) applyAspect();
   $("#emptyState").style.display = state.clips.length ? "none" : "flex";
@@ -2792,7 +2794,8 @@ function openAspectSheet() {
 /* seçilen oran + çözünürlükten çift sayıya yuvarlanmış piksel boyutu */
 function exportDims() {
   const [rw, rh] = ASPECTS[state.aspect];
-  const res = state.resolution;
+  let res = state.resolution;
+  if (state.upscale) res = Math.min(Math.round(res * 1.5), 2880);
   const even = v => Math.round(v / 2) * 2;
   return rw <= rh
     ? [even(res), even(res * rh / rw)]
@@ -2822,6 +2825,10 @@ function setCanvasResolution(forExport) {
     canvas.width = w;
     canvas.height = Math.round(w * state.exportH / state.exportW);
   }
+  /* canvas boyutu değişince bağlam ayarları sıfırlanır; ölçekleme kalitesi:
+     dışa aktarmada yüksek (upscale netliği), önizlemede hızlı */
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = forExport ? "high" : "low";
   noisePat = null;   // desen ölçeği canvas'a bağlı; yeniden üret
   invalidate();
 }
@@ -2878,6 +2885,22 @@ $("#btnExport").onclick = () => {
     beta.style.cssText = "font-size:10px;color:var(--dim);margin:10px 0 0";
     beta.textContent = "β Beta: 2K/4K ve 90/120 fps bazı telefonlarda stabil çalışmayabilir; sorun olursa 1080p/60 fps ve altını kullan.";
     body.appendChild(beta);
+
+    const up = document.createElement("button");
+    up.className = "sheetBtn";
+    const upLabel = () => "🔍 Video Upscale: " + (state.upscale ? "Açık" : "Kapalı");
+    up.textContent = upLabel();
+    up.onclick = () => {
+      state.upscale = !state.upscale;
+      up.textContent = upLabel();
+      applyAspect();
+      updEst();
+    };
+    body.appendChild(up);
+    const upNote = document.createElement("p");
+    upNote.style.cssText = "font-size:10px;color:var(--dim);margin:2px 0 0";
+    upNote.textContent = "Açıkken görüntü %50 büyütülüp yüksek kaliteli ölçekleme ile netleştirilir; yazı ve efektler daha keskin çıkar (render süresi uzar).";
+    body.appendChild(upNote);
     const est = document.createElement("p");
     est.style.cssText = "font-size:12px;color:var(--dim);text-align:center;margin:14px 0 4px";
     body.appendChild(est);
@@ -3317,12 +3340,17 @@ async function fastRender(codec, withAudio) {
         try { nl.clip.el.currentTime = nl.clip.in + nl.offset * nl.clip.speed; } catch (_) {}
       }
     }
-    /* kodlayıcı kuyruğu şişmesin */
-    while (venc.encodeQueueSize > 12 && !encError && !exportAbort) await new Promise(r => setTimeout(r, 2));
-    if (i % 5 === 0) {
-      $("#progressInner").style.width = (i / frames * 100).toFixed(1) + "%";
-      $("#modalDesc").textContent = `Kare ${i + 1} / ${frames}`;
+    /* kodlayıcı kuyruğu şişmesin: uyku yerine dequeue olayını bekle
+       (CPU boşta durmaz, kuyruk boşalır boşalmaz devam edilir) */
+    const queueCap = state.exportW * state.exportH > 1920 * 1080 ? 8 : 20;
+    while (venc.encodeQueueSize > queueCap && !encError && !exportAbort) {
+      await Promise.race([
+        new Promise(r => venc.addEventListener("dequeue", r, { once: true })),
+        new Promise(r => setTimeout(r, 50)),
+      ]);
     }
+    $("#progressInner").style.width = (i / frames * 100).toFixed(1) + "%";
+    $("#modalDesc").textContent = `Kare ${i + 1} / ${frames}`;
   }
   await venc.flush();
   venc.close();
@@ -3418,6 +3446,7 @@ function projectData() {
     aspect: state.aspect,
     resolution: state.resolution,
     fps: state.fps,
+    upscale: state.upscale,
     leadGap: state.leadGap,
     clips: state.clips.map(c => ({
       mediaId: c.mediaId, type: c.type, name: c.name, natDur: c.natDur,
@@ -3478,6 +3507,7 @@ async function newProject(tool) {
   state.aspect = "9:16";
   state.resolution = 720;
   state.fps = 30;
+  state.upscale = false;
   applyAspect();
   clearHistory();
   pendingTool = tool || null;
@@ -3492,6 +3522,7 @@ async function openProject(rec) {
   state.aspect = rec.data.aspect || "9:16";
   state.resolution = rec.data.resolution || 720;
   state.fps = rec.data.fps || 30;
+  state.upscale = !!rec.data.upscale;
   state.leadGap = rec.data.leadGap || 0;
   applyAspect();
   toast("Proje açılıyor…");
