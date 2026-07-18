@@ -18,7 +18,11 @@ Ayarlar → Pages → dalı seç → yayınla.
 - 🔀 **Sıralama**: Klibe basılı tutup zaman çizelgesinde sürükleyerek kliplerin sırasını değiştir
 - 🖼️ **Görünür çerçeve**: Önizlemede tuval kenarları ve boş alanlar gri gösterilir (en-boy oranı net seçilir); dışa aktarmada siyahtır
 - ⇄ **Geçişler**: Klipler arasında Solma, Siyah/Beyaz, Kaydırma, Silme, Yakınlaşma — süre ayarlı; zaman çizelgesindeki sınır düğmesinden eklenir
-- ✨ **Efektler (CapCut tarzı panel)**: Arama + kategori sekmeleri (Trend / Atmosfer / Retro / Hareket); Arızalı Sinyal, Konfeti, Parıltı, VHS, Kalpler, Kar, Yağmur, Vinyet, Film Greni, Negatif Renk, Kamera Hareketi, Nabız, Titrek Aksama
+- ✨ **100+ Efekt**: Arama + kategori sekmeli panel; emoji parçacık aileleri (kar, kalp, balon, kelebek, ateş…) × 4 yoğunluk, yağmur, gren, vinyet, sarsıntı, nabız, glitch, parıltı, tarama, konfeti, VHS, negatif, renk döngüsü, kamera hareketi (4 yön), flaşlar, ışık sızıntıları, bokeh, hız çizgileri
+- ⇄ **100+ Geçiş**: 17 renge karartma, 8 yönlü kaydırma/silme (+yumuşak sürümleri), bölünme, jaluzi, daire/kare/elmas/kalp/yıldız açılış-kapanışları, zoom/dönme, satranç, piksel çözülme, saat süpürmesi
+- 🎨 **100+ Filtre**: 10 aile × 9 yoğunluk + 12 ton kaydırma; arama ve kategorilerle
+- ▦ **108 Şablon**: Popüler edit müziği türleriyle (Phonk, Sigma, Drill, Lofi, Slowed, Synthwave…) hazır kurgu şablonları — seç, videolarını ekle; tempo kesimi, geçişler, filtre, efekt, başlık ve müzik otomatik uygulanır. "🎲 Otomatik Şablon Oluştur" ile rastgele yeni kombinasyonlar
+- 🧪 **YZ Lab**: Upscale, Kare Üretici ve tek dokunuşla Otomatik Edit
 - 🖼 **Bindirme (PiP)**: Video/fotoğrafı katman olarak üstüne ekle — sesi mikslenir, süresi ve konumu ayarlanır
 - 🤏 **Dokunmatik dönüşüm**: Önce dokunup seç, sonra tek parmakla taşı, iki parmakla yakınlaştır/boyutlandır (yanlışlıkla kaydırmayı önler; ana klip zaman çizelgesinden seçilir); sürüklerken merkez mıknatısı (kılavuz çizgisiyle ortaya yapışma) ve panellerde "Tam Ortala / Yatay / Dikey" düğmeleri
 - 🗂 **Katmanlar**: Üst üste binen öğelerde "öne getir / arkaya gönder" ile sıralama; birden çok bindirme ve müzik eklenebilir — zamanda çakışan çubuklar zaman çizelgesinde otomatik olarak ayrı katman satırlarına dizilir

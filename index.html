@@ -159,6 +159,9 @@
   .fxTile.sel .nm { color:var(--text); }
   .halfRow { display:flex; gap:8px; }
   .halfRow .sheetBtn { flex:1; margin:8px 0 0; }
+  .fxTile .sw { background:linear-gradient(135deg,#f59e0b,#3b82f6,#10b981); }
+  #homeViewTpl .fxSearch { margin-top:2px; }
+  .tplMeta { font-size:10px; color:var(--dim); }
   .libRow {
     display:flex; align-items:center; gap:10px;
     padding:8px 2px; border-bottom:1px solid var(--line);
@@ -475,6 +478,7 @@
 <div id="home">
   <div id="homeScroll">
     <div id="homeBrand"><span class="logo">P</span> Pisan Cut</div>
+    <div id="homeViewEdit">
     <div id="homeTop">
       <button id="btnNewProject"><span class="plus">＋</span></button>
       <button id="btnNewPhoto">🖼️</button>
@@ -494,11 +498,22 @@
       <h2>Projeler</h2>
       <div id="projList"></div>
     </div>
+    </div>
+    <div id="homeViewTpl" style="display:none">
+      <input class="fxSearch" id="tplSearch" placeholder="🔍 Şablon ara…">
+      <div class="fxTabs" id="tplTabs"></div>
+      <button class="sheetBtn primary" id="btnAutoTpl">🎲 Otomatik Şablon Oluştur</button>
+      <div id="tplList"></div>
+    </div>
+    <div id="homeViewLab" style="display:none">
+      <h2 style="font-size:14px;font-weight:700;margin-bottom:10px">🧪 YZ Lab</h2>
+      <div id="labList"></div>
+    </div>
   </div>
   <nav id="homeNav">
     <button class="act" data-nav="edit"><span class="nic">✂️</span>Düzenle</button>
-    <button data-nav="soon"><span class="nic">▦</span>Şablonlar</button>
-    <button data-nav="soon"><span class="nic">🧪</span>YZ Lab</button>
+    <button data-nav="templates"><span class="nic">▦</span>Şablonlar</button>
+    <button data-nav="lab"><span class="nic">🧪</span>YZ Lab</button>
     <button data-nav="projects"><span class="nic">📁</span>Projeler</button>
     <button data-nav="soon"><span class="nic">👤</span>Ben</button>
   </nav>
@@ -529,46 +544,142 @@ const ASPECTS = {
 const RES_OPTS = { 480: "480p", 720: "720p", 1080: "1080p", 1440: "2K β", 2160: "4K β" };
 const FPS_OPTS = { 24: "24 fps", 30: "30 fps", 60: "60 fps", 90: "90 fps β", 120: "120 fps β" };
 
-const FILTERS = {
-  none:    { name: "Orijinal", css: "" },
-  vivid:   { name: "Canlı",    css: "saturate(1.45) contrast(1.08)" },
-  warm:    { name: "Sıcak",    css: "sepia(.25) saturate(1.25) brightness(1.05)" },
-  cool:    { name: "Soğuk",    css: "hue-rotate(15deg) saturate(1.1) brightness(1.02)" },
-  mono:    { name: "Siyah-Beyaz", css: "grayscale(1) contrast(1.1)" },
-  sepia:   { name: "Sepya",    css: "sepia(.85)" },
-  vintage: { name: "Retro",    css: "sepia(.4) contrast(.92) brightness(1.05) saturate(.8)" },
-  dramatic:{ name: "Dramatik", css: "contrast(1.3) brightness(.92) saturate(1.1)" },
-};
+/* 100+ filtre: aile × yoğunluk kombinasyonlarıyla üretilir */
+const FILTERS = (() => {
+  const out = { none: { name: "Orijinal", css: "", cat: "temel" } };
+  const fams = [
+    ["canli", "Canlı", "temel", i => `saturate(${(1 + .12 * i).toFixed(2)}) contrast(${(1 + .025 * i).toFixed(2)})`],
+    ["sicak", "Sıcak", "temel", i => `sepia(${(.06 * i).toFixed(2)}) saturate(${(1 + .07 * i).toFixed(2)}) brightness(${(1 + .015 * i).toFixed(2)})`],
+    ["soguk", "Soğuk", "temel", i => `hue-rotate(${5 * i}deg) saturate(${(1 + .04 * i).toFixed(2)})`],
+    ["retro", "Retro", "retro", i => `sepia(${(.09 * i).toFixed(2)}) contrast(${(1 - .018 * i).toFixed(2)}) brightness(${(1 + .02 * i).toFixed(2)}) saturate(${(1 - .05 * i).toFixed(2)})`],
+    ["mono", "Siyah-Beyaz", "mono", i => `grayscale(1) contrast(${(.88 + .05 * i).toFixed(2)}) brightness(${(.94 + .018 * i).toFixed(2)})`],
+    ["sepya", "Sepya", "retro", i => `sepia(${(.35 + .075 * i).toFixed(2)}) contrast(${(1 + .02 * i).toFixed(2)})`],
+    ["dramatik", "Dramatik", "sinema", i => `contrast(${(1.08 + .05 * i).toFixed(2)}) brightness(${(1 - .02 * i).toFixed(2)}) saturate(${(1 + .04 * i).toFixed(2)})`],
+    ["soluk", "Soluk", "sinema", i => `saturate(${(1 - .08 * i).toFixed(2)}) brightness(${(1 + .025 * i).toFixed(2)}) contrast(${(1 - .025 * i).toFixed(2)})`],
+    ["neon", "Neon", "canlirenk", i => `saturate(${(1.3 + .18 * i).toFixed(2)}) contrast(${(1.1 + .04 * i).toFixed(2)}) hue-rotate(${18 * i}deg)`],
+    ["gece", "Gece", "sinema", i => `brightness(${(.9 - .04 * i).toFixed(2)}) contrast(${(1.05 + .04 * i).toFixed(2)}) saturate(${(1 - .04 * i).toFixed(2)})`],
+  ];
+  for (const [key, nm, cat, f] of fams) for (let i = 1; i <= 9; i++) out[key + i] = { name: nm + " " + i, css: f(i), cat };
+  for (let i = 1; i <= 12; i++) out["ton" + i] = { name: "Ton " + (i * 30) + "°", css: `hue-rotate(${i * 30}deg)`, cat: "ton" };
+  /* eski proje anahtarları (görünmez takma adlar) */
+  out.vivid = { ...out.canli4, hidden: true };
+  out.warm = { ...out.sicak4, hidden: true };
+  out.cool = { ...out.soguk4, hidden: true };
+  out.mono = { ...out.mono5, hidden: true };
+  out.sepia = { ...out.sepya4, hidden: true };
+  out.vintage = { ...out.retro5, hidden: true };
+  out.dramatic = { ...out.dramatik4, hidden: true };
+  return out;
+})();
+const FILTER_CATS = { all: "Tümü", temel: "Temel", canlirenk: "Neon", sinema: "Sinema", retro: "Retro", mono: "Mono", ton: "Ton" };
 
-const EFFECTS = {
-  none:     { name: "Yok",            icon: "🚫", cat: "all",      grad: "#1e1e28" },
-  glitch:   { name: "Arızalı Sinyal", icon: "👾", cat: "trend",    grad: "linear-gradient(135deg,#22d3ee,#a855f7 55%,#111)" },
-  confetti: { name: "Konfeti",        icon: "🎊", cat: "trend",    grad: "linear-gradient(135deg,#f43f5e,#f59e0b,#22c55e,#3b82f6)" },
-  sparkle:  { name: "Parıltı",        icon: "✨", cat: "trend",    grad: "linear-gradient(135deg,#0f172a,#facc15 80%)" },
-  vhs:      { name: "VHS",            icon: "📼", cat: "retro",    grad: "repeating-linear-gradient(0deg,#0e7490 0 4px,#155e75 4px 8px)" },
-  hearts:   { name: "Kalpler",        icon: "💖", cat: "atmosfer", grad: "linear-gradient(135deg,#831843,#f472b6)" },
-  snow:     { name: "Kar",            icon: "❄️", cat: "atmosfer", grad: "linear-gradient(180deg,#1e3a5f,#e0f2fe)" },
-  rain:     { name: "Yağmur",         icon: "🌧️", cat: "atmosfer", grad: "linear-gradient(180deg,#0f172a,#38bdf8)" },
-  vignette: { name: "Vinyet",         icon: "🌑", cat: "atmosfer", grad: "radial-gradient(circle,#4b5563 20%,#000 90%)" },
-  grain:    { name: "Film Greni",     icon: "🎞️", cat: "retro",    grad: "linear-gradient(135deg,#3f3f46,#a1a1aa)" },
-  negative: { name: "Negatif Renk",   icon: "🔮", cat: "retro",    grad: "linear-gradient(135deg,#bef264,#d946ef)" },
-  kenburns: { name: "Kamera Hareketi",icon: "🎥", cat: "hareket",  grad: "linear-gradient(135deg,#1d4ed8,#0ea5e9)" },
-  pulse:    { name: "Nabız",          icon: "💓", cat: "hareket",  grad: "linear-gradient(135deg,#7f1d1d,#ef4444)" },
-  shake:    { name: "Titrek Aksama",  icon: "📳", cat: "hareket",  grad: "linear-gradient(100deg,#78350f,#fbbf24)" },
-};
-const FX_CATS = { all: "Tümü", trend: "Trend", atmosfer: "Atmosfer", retro: "Retro", hareket: "Hareket" };
+/* 100+ efekt: parametrik ailelerden üretilir; çizim generic motorlarla */
+const EFFECTS = (() => {
+  const o = { none: { name: "Yok", icon: "🚫", cat: "all", grad: "#1e1e28", kind: "none" } };
+  const P = (key, nm, icon, cat, opts) => {
+    o[key] = { name: nm, icon, cat, grad: opts.grad || "linear-gradient(135deg,#2b2b3a,#42425a)", ...opts };
+  };
+  const parts = [
+    ["kar", "Kar", "❄️", "atmosfer", { ch: "❄️", dir: 1, sp: 40, grad: "linear-gradient(180deg,#1e3a5f,#e0f2fe)" }],
+    ["kalp", "Kalpler", "💖", "atmosfer", { ch: "💖", dir: -1, sp: 38, grad: "linear-gradient(135deg,#831843,#f472b6)" }],
+    ["yildiz", "Yıldızlar", "⭐", "atmosfer", { ch: "⭐", dir: -1, sp: 26 }],
+    ["balon", "Balonlar", "🎈", "eglence", { ch: "🎈", dir: -1, sp: 34 }],
+    ["kabarcik", "Kabarcık", "🫧", "atmosfer", { ch: "🫧", dir: -1, sp: 30 }],
+    ["yaprak", "Yapraklar", "🍂", "atmosfer", { ch: "🍂", dir: 1, sp: 36 }],
+    ["kelebek", "Kelebekler", "🦋", "atmosfer", { ch: "🦋", dir: -1, sp: 24 }],
+    ["nota", "Notalar", "🎵", "eglence", { ch: "🎵", dir: -1, sp: 30 }],
+    ["cicek", "Çiçekler", "🌸", "atmosfer", { ch: "🌸", dir: 1, sp: 30 }],
+    ["parti", "Parti", "🎉", "eglence", { ch: "🎉", dir: 1, sp: 44 }],
+    ["ates", "Ateş", "🔥", "eglence", { ch: "🔥", dir: -1, sp: 40 }],
+    ["damla", "Damlalar", "💧", "atmosfer", { ch: "💧", dir: 1, sp: 70 }],
+    ["kus", "Kuşlar", "🕊️", "atmosfer", { ch: "🕊️", dir: -1, sp: 20 }],
+  ];
+  const lvls = [["1", "Hafif", 12], ["2", "Orta", 26], ["3", "Yoğun", 44], ["4", "Fırtına", 68]];
+  for (const [k, nm, icon, cat, base] of parts)
+    for (const [sfx, lnm, count] of lvls) P(k + sfx, nm + " " + lnm, icon, cat, { kind: "emoji", ...base, count });
+  for (const [sfx, lnm, mult] of [["1", "Hafif", .5], ["2", "Orta", 1], ["3", "Yoğun", 1.8]]) {
+    P("rain" + sfx, "Yağmur " + lnm, "🌧️", "atmosfer", { kind: "rain", mult, grad: "linear-gradient(180deg,#0f172a,#38bdf8)" });
+    P("grain" + sfx, "Film Greni " + lnm, "🎞️", "retro", { kind: "grain", a: .05 * mult + .04, grad: "linear-gradient(135deg,#3f3f46,#a1a1aa)" });
+    P("vin" + sfx, "Vinyet " + lnm, "🌑", "sinema", { kind: "vignette", a: .3 + .22 * mult, grad: "radial-gradient(circle,#4b5563 20%,#000 90%)" });
+    P("shake" + sfx, "Sarsıntı " + lnm, "📳", "hareket", { kind: "shake", amp: 8 * mult + 4 });
+    P("pulse" + sfx, "Nabız " + lnm, "💓", "hareket", { kind: "pulse", amp: .028 * mult + .015 });
+    P("glitch" + sfx, "Arızalı Sinyal " + lnm, "👾", "trend", { kind: "glitch", mult, grad: "linear-gradient(135deg,#22d3ee,#a855f7 55%,#111)" });
+    P("sparkle" + sfx, "Parıltı " + lnm, "✨", "trend", { kind: "sparkle", mult, grad: "linear-gradient(135deg,#0f172a,#facc15 80%)" });
+    P("scan" + sfx, "Tarama Çizgisi " + lnm, "📺", "retro", { kind: "scan", mult });
+    P("konfeti" + sfx, "Konfeti " + lnm, "🎊", "trend", { kind: "confetti", mult, grad: "linear-gradient(135deg,#f43f5e,#f59e0b,#22c55e,#3b82f6)" });
+  }
+  P("vhs1", "VHS", "📼", "retro", { kind: "vhs", grad: "repeating-linear-gradient(0deg,#0e7490 0 4px,#155e75 4px 8px)" });
+  P("vhs2", "VHS Bozuk", "📼", "retro", { kind: "vhs", noise: 1 });
+  P("negatif1", "Negatif Renk", "🔮", "renk", { kind: "negative", grad: "linear-gradient(135deg,#bef264,#d946ef)" });
+  for (const [sfx, spd] of [["1", 25], ["2", 70], ["3", 150]]) P("huecycle" + sfx, "Renk Döngüsü " + sfx, "🌈", "renk", { kind: "hue", spd });
+  P("kenburns1", "Kamera Sağa", "🎥", "hareket", { kind: "kenburns", kx: 1, ky: 0 });
+  P("kenburns2", "Kamera Sola", "🎥", "hareket", { kind: "kenburns", kx: -1, ky: 0 });
+  P("kenburns3", "Kamera Aşağı", "🎥", "hareket", { kind: "kenburns", kx: 0, ky: 1 });
+  P("kenburns4", "Kamera Yukarı", "🎥", "hareket", { kind: "kenburns", kx: 0, ky: -1 });
+  for (const [sfx, nm, col, bpm] of [["1", "Beyaz Flaş", "#fff", 1], ["2", "Altın Flaş", "#f5c542", 1.4], ["3", "Mavi Flaş", "#3b82f6", 2]])
+    P("flash" + sfx, nm, "⚡", "renk", { kind: "flash", col, bpm });
+  for (const [sfx, nm, col, ph] of [["1", "Işık Sızıntısı Turuncu", "#f97316", 0], ["2", "Işık Sızıntısı Pembe", "#ec4899", 2], ["3", "Işık Sızıntısı Mavi", "#38bdf8", 4], ["4", "Işık Sızıntısı Mor", "#a855f7", 5]])
+    P("leak" + sfx, nm, "🌅", "sinema", { kind: "lightleak", col, ph });
+  for (const [sfx, nm, col] of [["1", "Bokeh Altın", "#fbbf24"], ["2", "Bokeh Beyaz", "#ffffff"], ["3", "Bokeh Pembe", "#f472b6"]])
+    P("bokeh" + sfx, nm, "🔆", "sinema", { kind: "bokeh", col });
+  for (const [sfx, nm, dx, dy] of [["1", "Hız Çizgileri Sağ", 1, 0], ["2", "Hız Çizgileri Sol", -1, 0], ["3", "Hız Çizgileri Aşağı", 0, 1], ["4", "Hız Çizgileri Yukarı", 0, -1]])
+    P("speed" + sfx, nm, "💨", "hareket", { kind: "speedlines", dx, dy });
+  /* eski proje anahtarları (görünmez takma adlar) */
+  for (const [legacy, src] of [["kenburns", "kenburns1"], ["pulse", "pulse2"], ["shake", "shake2"],
+    ["vhs", "vhs1"], ["glitch", "glitch2"], ["grain", "grain2"], ["vignette", "vin2"],
+    ["snow", "kar2"], ["rain", "rain2"], ["sparkle", "sparkle2"], ["negative", "negatif1"],
+    ["hearts", "kalp2"], ["confetti", "konfeti2"]]) o[legacy] = { ...o[src], hidden: true };
+  return o;
+})();
+const FX_CATS = { all: "Tümü", trend: "Trend", atmosfer: "Atmosfer", eglence: "Eğlence", hareket: "Hareket", retro: "Retro", renk: "Renk", sinema: "Sinema" };
 
-const TRANSITIONS = {
-  none:   "Yok",
-  fade:   "Solma",
-  black:  "Siyah",
-  white:  "Beyaz",
-  slideL: "Sola Kay",
-  slideR: "Sağa Kay",
-  slideU: "Yukarı Kay",
-  wipe:   "Silme",
-  zoom:   "Yakınlaş",
-};
+/* 100+ geçiş: yön/renk/şekil/sayı kombinasyonlarıyla üretilir */
+const TRANSITIONS = (() => {
+  const t = { none: { name: "Yok", cat: "temel", kind: "none", icon: "🚫" } };
+  t.fade = { name: "Solma", cat: "temel", kind: "fade", icon: "◐" };
+  const dips = [["black", "Siyah", "#000"], ["white", "Beyaz", "#fff"], ["red", "Kırmızı", "#dc2626"],
+    ["orange", "Turuncu", "#f97316"], ["yellow", "Sarı", "#facc15"], ["green", "Yeşil", "#22c55e"],
+    ["cyan", "Camgöbeği", "#22d3ee"], ["blue", "Mavi", "#3b82f6"], ["purple", "Mor", "#a855f7"],
+    ["pink", "Pembe", "#ec4899"], ["gray", "Gri", "#6b7280"], ["gold", "Altın", "#d4af37"],
+    ["teal", "Turkuaz", "#14b8a6"], ["lime", "Fıstık", "#84cc16"], ["navy", "Lacivert", "#1e3a8a"],
+    ["brown", "Kahve", "#78350f"], ["night", "Gece", "#0f172a"]];
+  for (const [k, nm, col] of dips) t["dip_" + k] = { name: nm + " Geçiş", cat: "renk", kind: "dip", color: col, grad: col, icon: "●" };
+  const dirs = [["L", "Sola", -1, 0, "←"], ["R", "Sağa", 1, 0, "→"], ["U", "Yukarı", 0, -1, "↑"], ["D", "Aşağı", 0, 1, "↓"],
+    ["UL", "Sol Üste", -1, -1, "↖"], ["UR", "Sağ Üste", 1, -1, "↗"], ["DL", "Sol Alta", -1, 1, "↙"], ["DR", "Sağ Alta", 1, 1, "↘"]];
+  for (const [k, nm, dx, dy, ic] of dirs) {
+    t["slide" + k] = { name: "Kaydır " + nm, cat: "kaydirma", kind: "slide", dx, dy, icon: ic };
+    t["slidefade" + k] = { name: "Yumuşak Kaydır " + nm, cat: "kaydirma", kind: "slide", dx, dy, fade: true, icon: ic };
+    t["wipe" + k] = { name: "Silme " + nm, cat: "silme", kind: "wipe", dx, dy, icon: "◧" };
+    t["wipefade" + k] = { name: "Yumuşak Silme " + nm, cat: "silme", kind: "wipe", dx, dy, fade: true, icon: "◨" };
+  }
+  t.splitH = { name: "Bölünme Yatay", cat: "silme", kind: "split", axis: "h", icon: "⬍" };
+  t.splitV = { name: "Bölünme Dikey", cat: "silme", kind: "split", axis: "v", icon: "⬌" };
+  for (const n of [2, 4, 6, 8, 12, 16, 24, 32]) {
+    t["blindsH" + n] = { name: "Jaluzi Yatay " + n, cat: "silme", kind: "blinds", axis: "h", n, icon: "▤" };
+    t["blindsV" + n] = { name: "Jaluzi Dikey " + n, cat: "silme", kind: "blinds", axis: "v", n, icon: "▥" };
+  }
+  for (const [sh, nm, ic] of [["circle", "Daire", "●"], ["rect", "Kare", "■"], ["diamond", "Elmas", "◆"], ["heart", "Kalp", "♥"], ["star", "Yıldız", "★"]]) {
+    t[sh + "in"] = { name: nm + " Kapanış", cat: "sekil", kind: "shape", shape: sh, out: false, icon: ic };
+    t[sh + "out"] = { name: nm + " Açılış", cat: "sekil", kind: "shape", shape: sh, out: true, icon: ic };
+  }
+  t.zoomin = { name: "Yakınlaş", cat: "zoom", kind: "zoom", z: 1, icon: "🔍" };
+  t.zoomout = { name: "Uzaklaş", cat: "zoom", kind: "zoom", z: -1, icon: "🔎" };
+  t.zoomspin1 = { name: "Dönerek Yakınlaş", cat: "zoom", kind: "zoom", z: 1, spin: 1, icon: "🌀" };
+  t.zoomspin2 = { name: "Dönerek Uzaklaş", cat: "zoom", kind: "zoom", z: -1, spin: -1, icon: "🌀" };
+  t.spincw = { name: "Dönme Saat Yönü", cat: "zoom", kind: "zoom", z: 0, spin: 1, icon: "↻" };
+  t.spinccw = { name: "Dönme Ters Yön", cat: "zoom", kind: "zoom", z: 0, spin: -1, icon: "↺" };
+  for (const n of [3, 4, 6, 8, 10, 14, 20]) t["checker" + n] = { name: "Satranç " + n, cat: "piksel", kind: "checker", n, icon: "▦" };
+  for (const n of [6, 8, 12, 16, 24, 32, 48]) t["dissolve" + n] = { name: "Piksel Çözülme " + n, cat: "piksel", kind: "dissolve", n, icon: "▩" };
+  t.clockcw = { name: "Saat Yönü Süpürme", cat: "sekil", kind: "clock", dir: 1, icon: "🕐" };
+  t.clockccw = { name: "Ters Saat Süpürme", cat: "sekil", kind: "clock", dir: -1, icon: "🕐" };
+  /* eski proje anahtarları */
+  t.black = { ...t.dip_black, hidden: true };
+  t.white = { ...t.dip_white, hidden: true };
+  t.wipe = { ...t.wipeR, hidden: true };
+  t.zoom = { ...t.zoomin, hidden: true };
+  return t;
+})();
+const TR_CATS = { all: "Tümü", temel: "Temel", kaydirma: "Kaydırma", silme: "Silme", sekil: "Şekil", renk: "Renk", zoom: "Zoom", piksel: "Piksel" };
 
 const ANIM_IN = {
   none: "Yok", fade: "Solma", pop: "Pop", slideUp: "Yukarı",
@@ -791,6 +902,11 @@ $("#fileVideo").onchange = async e => {
     pendingTool = null;
     setTimeout(() => handleTool(t), 250);
   }
+  if (pendingTemplate && state.clips.length) {
+    const tp = pendingTemplate;
+    pendingTemplate = null;
+    applyTemplate(tp);
+  }
 };
 
 function addMedia(file) {
@@ -906,9 +1022,11 @@ function drawClipImage(c, o = {}) {
   const fit = Math.min(W / sw, H / sh);
   const dw = sw * fit, dh = sh * fit;
   ctx.save();
-  if (o.clipRect) { ctx.beginPath(); ctx.rect(...o.clipRect); ctx.clip(); }
+  if (o.clipPath) { ctx.beginPath(); o.clipPath(ctx); ctx.clip(o.evenodd ? "evenodd" : "nonzero"); }
+  else if (o.clipRect) { ctx.beginPath(); ctx.rect(...o.clipRect); ctx.clip(); }
   ctx.globalAlpha = o.alpha ?? 1;
   ctx.translate(W / 2 + (o.tx || 0), H / 2 + (o.ty || 0));
+  if (o.rot) ctx.rotate(o.rot);
   const s = o.scale || 1;
   ctx.scale(s, s);
   const f = buildFilter(c);
@@ -921,42 +1039,65 @@ function drawClipImage(c, o = {}) {
 /* çözünürlükten bağımsız efekt ölçeği (önizleme küçük canvas'ta çalışır) */
 const fxScale = () => Math.min(canvas.width, canvas.height) / 720;
 
-/* efektin klip çizimine uyguladığı dönüşüm (sarsıntı, nabız, ken burns) */
+/* efektin klip çizimine uyguladığı dönüşüm (spec.kind'a göre) */
 function effectTransform(c, into) {
-  const W = canvas.width, k = fxScale();
-  switch (c.effect) {
+  const sp = EFFECTS[c.effect];
+  if (!sp) return {};
+  const k = fxScale(), W = canvas.width, H = canvas.height;
+  switch (sp.kind) {
     case "shake": {
       const f = Math.floor(state.t * 18);
-      return { tx: (n1(f) - .5) * 16 * k, ty: (n1(f + 31) - .5) * 16 * k, scale: 1.03 };
+      return { tx: (n1(f) - .5) * sp.amp * k, ty: (n1(f + 31) - .5) * sp.amp * k, scale: 1.03 };
     }
     case "pulse":
-      return { scale: 1 + .045 * Math.sin(state.t * Math.PI * 2 * 1.3) };
+      return { scale: 1 + sp.amp * Math.sin(state.t * Math.PI * 2 * 1.3) };
     case "kenburns": {
       const pr = clamp(into / Math.max(clipDur(c), .01), 0, 1);
-      const dir = c.id % 2 ? 1 : -1;
-      return { scale: 1.06 + .22 * pr, tx: dir * (pr - .5) * .05 * W };
+      return { scale: 1.06 + .22 * pr, tx: (sp.kx || 0) * (pr - .5) * .1 * W, ty: (sp.ky || 0) * (pr - .5) * .1 * H };
     }
   }
   return {};
 }
 
-/* klip üstüne çizilen efekt katmanları */
+/* klip üstüne çizilen efekt katmanları (spec.kind'a göre generic) */
 function drawEffectOverlay(c) {
+  const sp = EFFECTS[c.effect];
+  if (!sp || sp.kind === "none") return;
   const W = canvas.width, H = canvas.height, t = state.t, k = fxScale();
-  switch (c.effect) {
+  switch (sp.kind) {
+    case "emoji": {
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      for (let i = 0; i < sp.count; i++) {
+        const spd = sp.sp * (0.6 + n1(i + 7) * 0.9) * k;
+        const x = (n1(i) * W + Math.sin(t * (0.6 + n1(i + 3)) + i) * 30 * k + W) % W;
+        let y = (n1(i + 99) * H + t * spd) % H;
+        if (sp.dir < 0) y = H - y;
+        ctx.globalAlpha = .5 + n1(i + 5) * .5;
+        ctx.font = ((13 + n1(i + 13) * 22) * k) + "px sans-serif";
+        ctx.fillText(sp.ch, x, y);
+      }
+      ctx.globalAlpha = 1;
+      break;
+    }
     case "vignette": {
       const g = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * .35, W / 2, H / 2, Math.max(W, H) * .72);
       g.addColorStop(0, "rgba(0,0,0,0)");
-      g.addColorStop(1, "rgba(0,0,0,.6)");
+      g.addColorStop(1, `rgba(0,0,0,${sp.a})`);
       ctx.fillStyle = g;
       ctx.fillRect(0, 0, W, H);
       break;
     }
     case "grain":
-      drawNoise(.12);
+      drawNoise(sp.a);
       break;
+    case "scan": {
+      ctx.fillStyle = `rgba(0,0,0,${.08 + .08 * sp.mult})`;
+      const step = Math.max(4 * k, 2);
+      for (let y = 0; y < H; y += step) ctx.fillRect(0, y, W, 1.4 * k);
+      break;
+    }
     case "vhs": {
-      drawNoise(.06);
+      drawNoise(sp.noise ? .14 : .06);
       ctx.fillStyle = "rgba(0,0,0,.14)";
       const step = Math.max(4 * k, 2);
       for (let y = 0; y < H; y += step) ctx.fillRect(0, y, W, 1.4 * k);
@@ -974,13 +1115,13 @@ function drawEffectOverlay(c) {
     }
     case "glitch": {
       const burst = n1(Math.floor(t * 1.7));
-      if (burst > .42) {
-        const k = 3 + Math.floor(n1(Math.floor(t * 9)) * 4);
-        for (let i = 0; i < k; i++) {
+      if (burst > .42 / Math.max(sp.mult, .5)) {
+        const kct = Math.round(2 + sp.mult * 3 + n1(Math.floor(t * 9)) * 3);
+        for (let i = 0; i < kct; i++) {
           const seed = Math.floor(t * 12) * 10 + i;
           const sy = n1(seed) * H;
           const sh = (8 + n1(seed + 1) * 46) * k;
-          const dx = (n1(seed + 2) - .5) * 60 * k;
+          const dx = (n1(seed + 2) - .5) * 60 * sp.mult * k;
           try { ctx.drawImage(canvas, 0, sy, W, sh, dx, sy, W, sh); } catch (_) {}
           ctx.fillStyle = i % 2 ? "rgba(255,0,80,.08)" : "rgba(0,255,255,.08)";
           ctx.fillRect(0, sy, W, sh);
@@ -988,26 +1129,13 @@ function drawEffectOverlay(c) {
       }
       break;
     }
-    case "snow":
-      for (let i = 0; i < 55; i++) {
-        const sp = (26 + n1(i + 7) * 55) * k;
-        const x = (n1(i) * W + Math.sin(t * .8 + i) * 26 * k + W) % W;
-        const y = (n1(i + 99) * H + t * sp) % H;
-        ctx.globalAlpha = .55 + n1(i + 3) * .4;
-        ctx.fillStyle = "#fff";
-        ctx.beginPath();
-        ctx.arc(x, y, (1.2 + n1(i + 5) * 2.4) * k, 0, 7);
-        ctx.fill();
-      }
-      ctx.globalAlpha = 1;
-      break;
     case "rain":
       ctx.strokeStyle = "rgba(180,210,255,.4)";
       ctx.lineWidth = 1.4 * k;
-      for (let i = 0; i < 70; i++) {
-        const sp = (380 + n1(i + 9) * 260) * k;
+      for (let i = 0; i < Math.round(70 * sp.mult); i++) {
+        const spd = (380 + n1(i + 9) * 260) * k;
         const x = (n1(i) * W + t * 60 * k) % W;
-        const y = (n1(i + 50) * H + t * sp) % H;
+        const y = (n1(i + 50) * H + t * spd) % H;
         ctx.beginPath();
         ctx.moveTo(x, y);
         ctx.lineTo(x - 3 * k, y + 15 * k);
@@ -1015,7 +1143,7 @@ function drawEffectOverlay(c) {
       }
       break;
     case "sparkle":
-      for (let i = 0; i < 26; i++) {
+      for (let i = 0; i < Math.round(26 * sp.mult); i++) {
         const tw = (Math.sin(t * 3.2 + i * 2.1) + 1) / 2;
         if (tw < .25) continue;
         const x = n1(i) * W, y = n1(i + 31) * H;
@@ -1039,23 +1167,75 @@ function drawEffectOverlay(c) {
       ctx.fillRect(0, 0, W, H);
       ctx.restore();
       break;
-    case "hearts":
-      ctx.textAlign = "center"; ctx.textBaseline = "middle";
-      for (let i = 0; i < 16; i++) {
-        const sp = (30 + n1(i + 11) * 50) * k;
-        const x = (n1(i) * W + Math.sin(t * 1.2 + i) * 30 * k + W) % W;
-        const y = H - ((n1(i + 77) * H + t * sp) % H);
-        ctx.globalAlpha = .5 + n1(i + 5) * .5;
-        ctx.font = ((14 + n1(i + 3) * 22) * k) + "px sans-serif";
-        ctx.fillText("💖", x, y);
-      }
-      ctx.globalAlpha = 1;
+    case "hue":
+      ctx.save();
+      ctx.globalCompositeOperation = "hue";
+      ctx.fillStyle = `hsl(${(t * sp.spd) % 360} 90% 50%)`;
+      ctx.fillRect(0, 0, W, H);
+      ctx.restore();
       break;
+    case "flash": {
+      const a = Math.pow(Math.max(Math.sin(t * Math.PI * 2 * sp.bpm), 0), 10) * .35;
+      if (a > .01) {
+        ctx.save();
+        ctx.globalAlpha = a;
+        ctx.fillStyle = sp.col;
+        ctx.fillRect(0, 0, W, H);
+        ctx.restore();
+      }
+      break;
+    }
+    case "lightleak": {
+      const cx = (Math.sin(t * .5 + sp.ph) * .5 + .5) * W;
+      const cy = (Math.cos(t * .35 + sp.ph) * .5 + .5) * H * .6;
+      const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(W, H) * .6);
+      g.addColorStop(0, sp.col + "66");
+      g.addColorStop(1, "#00000000");
+      ctx.save();
+      ctx.globalCompositeOperation = "screen";
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, H);
+      ctx.restore();
+      break;
+    }
+    case "bokeh":
+      ctx.save();
+      ctx.globalCompositeOperation = "screen";
+      for (let i = 0; i < 14; i++) {
+        const x = (n1(i) * W + Math.sin(t * .4 + i) * 40 * k + W) % W;
+        const y = (n1(i + 31) * H + Math.cos(t * .3 + i * 2) * 30 * k + H) % H;
+        const r = (20 + n1(i + 7) * 55) * k;
+        const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+        g.addColorStop(0, sp.col + "44");
+        g.addColorStop(.8, sp.col + "22");
+        g.addColorStop(1, "#00000000");
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
+      }
+      ctx.restore();
+      break;
+    case "speedlines": {
+      ctx.strokeStyle = "rgba(255,255,255,.25)";
+      ctx.lineCap = "round";
+      for (let i = 0; i < 26; i++) {
+        const len = (60 + n1(i + 3) * 120) * k;
+        const spd = (600 + n1(i + 9) * 500) * k;
+        let x, y;
+        if (sp.dx) { x = ((n1(i) * W + t * spd * sp.dx) % W + W) % W; y = n1(i + 50) * H; }
+        else { x = n1(i) * W; y = ((n1(i + 50) * H + t * spd * sp.dy) % H + H) % H; }
+        ctx.lineWidth = (1 + n1(i + 5) * 3) * k;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x - (sp.dx || 0) * len, y - (sp.dy || 0) * len);
+        ctx.stroke();
+      }
+      break;
+    }
     case "confetti":
-      for (let i = 0; i < 40; i++) {
-        const sp = (120 + n1(i + 9) * 180) * k;
+      for (let i = 0; i < Math.round(40 * sp.mult); i++) {
+        const spd = (120 + n1(i + 9) * 180) * k;
         const x = (n1(i) * W + Math.sin(t * 2 + i) * 24 * k + W) % W;
-        const y = (n1(i + 50) * H + t * sp) % H;
+        const y = (n1(i + 50) * H + t * spd) % H;
         ctx.save();
         ctx.translate(x, y);
         ctx.rotate(t * (2 + n1(i + 4) * 4) + i);
@@ -1090,26 +1270,120 @@ function drawNoise(alpha) {
   ctx.restore();
 }
 
-/* önceki klipten aktif klibe geçiş: p 0→1 (önceki ayrılıyor) */
-function drawTransition(prev, type, p) {
+/* şekil yolları (geçiş maskeleri için) */
+function shapePath(kind, c2, cx, cy, r) {
+  if (kind === "circle") { c2.arc(cx, cy, r, 0, 7); return; }
+  if (kind === "rect") { c2.rect(cx - r, cy - r, r * 2, r * 2); return; }
+  if (kind === "diamond") {
+    c2.moveTo(cx, cy - r); c2.lineTo(cx + r, cy); c2.lineTo(cx, cy + r); c2.lineTo(cx - r, cy);
+    c2.closePath(); return;
+  }
+  if (kind === "heart") {
+    const sc = r / 14;
+    c2.moveTo(cx, cy + 11 * sc);
+    c2.bezierCurveTo(cx - 24 * sc, cy - 9 * sc, cx - 11 * sc, cy - 24 * sc, cx, cy - 9 * sc);
+    c2.bezierCurveTo(cx + 11 * sc, cy - 24 * sc, cx + 24 * sc, cy - 9 * sc, cx, cy + 11 * sc);
+    c2.closePath(); return;
+  }
+  if (kind === "star") {
+    for (let i = 0; i < 10; i++) {
+      const rr = i % 2 ? r * .45 : r;
+      const a = -Math.PI / 2 + i * Math.PI / 5;
+      const x = cx + Math.cos(a) * rr, y = cy + Math.sin(a) * rr;
+      i ? c2.lineTo(x, y) : c2.moveTo(x, y);
+    }
+    c2.closePath(); return;
+  }
+}
+
+/* önceki klipten aktif klibe geçiş: p 0→1 (önceki ayrılıyor);
+   spec anahtar adı (eski kayıtlar) veya spec nesnesi olabilir */
+function drawTransition(prev, spec, p) {
+  if (typeof spec === "string") spec = TRANSITIONS[spec];
+  if (!spec || spec.kind === "none") return;
   const W = canvas.width, H = canvas.height;
   const e = easeInOut(p);
   const bx = (prev.tx || 0) * W, by = (prev.ty || 0) * H, bs = prev.scale || 1;
-  switch (type) {
-    case "fade":   drawClipImage(prev, { alpha: 1 - e, tx: bx, ty: by, scale: bs }); break;
-    case "black":
-    case "white":
-      ctx.save();
-      ctx.globalAlpha = 1 - e;
-      ctx.fillStyle = type === "black" ? "#000" : "#fff";
-      ctx.fillRect(0, 0, W, H);
-      ctx.restore();
+  const dp = o => drawClipImage(prev, { ...o, tx: bx + (o.tx || 0), ty: by + (o.ty || 0), scale: bs * (o.scale || 1) });
+  const R = Math.hypot(W, H) / 2;
+  switch (spec.kind) {
+    case "fade": dp({ alpha: 1 - e }); break;
+    case "dip":
+      ctx.save(); ctx.globalAlpha = 1 - e; ctx.fillStyle = spec.color; ctx.fillRect(0, 0, W, H); ctx.restore();
       break;
-    case "slideL": drawClipImage(prev, { tx: bx - e * W, ty: by, scale: bs }); break;
-    case "slideR": drawClipImage(prev, { tx: bx + e * W, ty: by, scale: bs }); break;
-    case "slideU": drawClipImage(prev, { tx: bx, ty: by - e * H, scale: bs }); break;
-    case "wipe":   drawClipImage(prev, { clipRect: [e * W, 0, W * (1 - e), H], tx: bx, ty: by, scale: bs }); break;
-    case "zoom":   drawClipImage(prev, { alpha: 1 - e, scale: bs * (1 + e * 1.3), tx: bx, ty: by }); break;
+    case "slide": dp({ tx: spec.dx * e * W, ty: spec.dy * e * H, alpha: spec.fade ? 1 - e : 1 }); break;
+    case "wipe": {
+      let x0 = 0, y0 = 0, w = W, h = H;
+      if (spec.dx > 0) { x0 = e * W; w = W - x0; } else if (spec.dx < 0) { w = W * (1 - e); }
+      if (spec.dy > 0) { y0 = e * H; h = H - y0; } else if (spec.dy < 0) { h = H * (1 - e); }
+      dp({ clipRect: [x0, y0, w, h], alpha: spec.fade ? 1 - e * .7 : 1 });
+      break;
+    }
+    case "split":
+      if (spec.axis === "h") {
+        dp({ clipRect: [0, 0, W, H / 2], ty: -e * H / 2 });
+        dp({ clipRect: [0, H / 2, W, H / 2], ty: e * H / 2 });
+      } else {
+        dp({ clipRect: [0, 0, W / 2, H], tx: -e * W / 2 });
+        dp({ clipRect: [W / 2, 0, W / 2, H], tx: e * W / 2 });
+      }
+      break;
+    case "blinds": {
+      const n = spec.n;
+      dp({ clipPath: c2 => {
+        for (let i = 0; i < n; i++) {
+          if (spec.axis === "h") { const hh = H / n; c2.rect(0, i * hh, W, hh * (1 - e)); }
+          else { const ww = W / n; c2.rect(i * ww, 0, ww * (1 - e), H); }
+        }
+      } });
+      break;
+    }
+    case "shape":
+      if (!spec.out) {
+        dp({ clipPath: c2 => shapePath(spec.shape, c2, W / 2, H / 2, R * 1.15 * (1 - e)) });
+      } else {
+        dp({ evenodd: true, clipPath: c2 => { c2.rect(0, 0, W, H); shapePath(spec.shape, c2, W / 2, H / 2, R * 1.15 * e); } });
+      }
+      break;
+    case "clock":
+      dp({ clipPath: c2 => {
+        c2.moveTo(W / 2, H / 2);
+        const a0 = -Math.PI / 2;
+        c2.arc(W / 2, H / 2, R * 1.2, a0, a0 + Math.PI * 2 * (1 - e) * spec.dir, spec.dir < 0);
+        c2.closePath();
+      } });
+      break;
+    case "zoom":
+      dp({
+        alpha: 1 - e,
+        scale: spec.z > 0 ? 1 + e * 1.4 : spec.z < 0 ? Math.max(1 - e * .85, .05) : 1,
+        rot: (spec.spin || 0) * e * Math.PI,
+      });
+      break;
+    case "checker": {
+      const n = spec.n, cw = W / n;
+      const rows = Math.ceil(H / cw);
+      dp({ clipPath: c2 => {
+        for (let i = 0; i < n; i++) for (let j = 0; j < rows; j++) {
+          const phase = (i + j) % 2 ? .5 : 0;
+          const lp = clamp((e - phase) * 2, 0, 1);
+          if (lp >= 1) continue;
+          const w2 = cw * (1 - lp), h2 = cw * (1 - lp);
+          c2.rect(i * cw + (cw - w2) / 2, j * cw + (cw - h2) / 2, w2, h2);
+        }
+      } });
+      break;
+    }
+    case "dissolve": {
+      const n = spec.n, cw = W / n;
+      const rows = Math.ceil(H / cw);
+      dp({ clipPath: c2 => {
+        for (let i = 0; i < n; i++) for (let j = 0; j < rows; j++) {
+          if (e < n1(i * 131 + j * 17)) c2.rect(i * cw, j * cw, cw + .5, cw + .5);
+        }
+      } });
+      break;
+    }
   }
 }
 
@@ -1954,6 +2228,51 @@ function subhead(body, text) {
   body.appendChild(h);
 }
 
+/* arama + kategori sekmeleri + kutucuk ızgarası: efekt/filtre/geçiş panelleri */
+function buildCatalog(body, { cats, entries, selectedKey, renderTile, onPick }) {
+  const search = document.createElement("input");
+  search.className = "fxSearch";
+  search.placeholder = "🔍 Ara…";
+  body.appendChild(search);
+  const tabs = document.createElement("div");
+  tabs.className = "fxTabs";
+  body.appendChild(tabs);
+  const grid = document.createElement("div");
+  grid.className = "fxGrid";
+  body.appendChild(grid);
+  let cat = "all", q = "";
+  const rTabs = () => {
+    tabs.innerHTML = "";
+    for (const [k, label] of Object.entries(cats)) {
+      const b = document.createElement("button");
+      b.className = "fxTab" + (cat === k ? " sel" : "");
+      b.textContent = label;
+      b.onclick = () => { cat = k; rTabs(); rGrid(); };
+      tabs.appendChild(b);
+    }
+  };
+  const rGrid = () => {
+    grid.innerHTML = "";
+    for (const [key, it] of Object.entries(entries)) {
+      if (it.hidden) continue;
+      if (cat !== "all" && it.cat !== cat && key !== "none") continue;
+      if (q && !it.name.toLocaleLowerCase("tr").includes(q)) continue;
+      const el = document.createElement("button");
+      el.className = "fxTile" + (selectedKey() === key ? " sel" : "");
+      el.innerHTML = renderTile(key, it);
+      el.onclick = () => {
+        onPick(key);
+        grid.querySelectorAll(".fxTile").forEach(x => x.classList.remove("sel"));
+        el.classList.add("sel");
+      };
+      grid.appendChild(el);
+    }
+  };
+  search.oninput = () => { q = search.value.trim().toLocaleLowerCase("tr"); rGrid(); };
+  rTabs();
+  rGrid();
+}
+
 /* ---------- Geçiş ---------- */
 function openTransSheetNearPlayhead() {
   if (state.clips.length < 2) { toast("Geçiş için en az iki klip gerekli"); return; }
@@ -1973,70 +2292,40 @@ function openTransSheetNearPlayhead() {
 }
 
 function openTransSheet(leftClip) {
-  openSheet("Geçiş", body => {
-    subhead(body, "Tür");
-    chipRow(body, TRANSITIONS, leftClip.trans.type, key => {
-      leftClip.trans.type = key;
-      renderTimeline();
-      /* önizleme: geçişin başına sar */
-      const b = clipStart(leftClip) + clipDur(leftClip);
-      seekTo(Math.max(b - .01, 0), true);
-      setTimeout(() => { seekTo(b + .01, true); play(); }, 60);
-    });
-    subhead(body, "Süre");
+  openSheet("Geçişler (100+)", body => {
     sliderRow(body, "Süre", .3, 1.5, .1, leftClip.trans.dur, v => v.toFixed(1) + "s", v => leftClip.trans.dur = v);
+    buildCatalog(body, {
+      cats: TR_CATS,
+      entries: TRANSITIONS,
+      selectedKey: () => leftClip.trans.type,
+      renderTile: (key, tr) => `<span class="tile" style="background:${tr.grad || "linear-gradient(135deg,#263041,#3b4a63)"};font-size:26px;color:#dbe3f0">${tr.icon}</span><span class="nm">${tr.name}</span>`,
+      onPick: key => {
+        leftClip.trans.type = key;
+        renderTimeline();
+        /* önizleme: geçişin hemen öncesine sar ve oynat */
+        const b = clipStart(leftClip) + clipDur(leftClip);
+        seekTo(Math.max(b - .35, 0), true);
+        if (!state.playing && key !== "none") play();
+      },
+    });
   });
 }
 
-/* ---------- Efekt (CapCut tarzı: arama + sekmeler + kutucuklar) ---------- */
+/* ---------- Efektler (100+; arama + kategoriler) ---------- */
 function openEffectSheet() {
   const c = targetClip(); if (!c) return;
-  let cat = "all", query = "";
   openSheet("Efektler", body => {
-    const search = document.createElement("input");
-    search.className = "fxSearch";
-    search.placeholder = "🔍 Efekt ara…";
-    body.appendChild(search);
-
-    const tabs = document.createElement("div");
-    tabs.className = "fxTabs";
-    body.appendChild(tabs);
-
-    const grid = document.createElement("div");
-    grid.className = "fxGrid";
-    body.appendChild(grid);
-
-    const renderTabs = () => {
-      tabs.innerHTML = "";
-      for (const [key, label] of Object.entries(FX_CATS)) {
-        const t = document.createElement("button");
-        t.className = "fxTab" + (cat === key ? " sel" : "");
-        t.textContent = label;
-        t.onclick = () => { cat = key; renderTabs(); renderGrid(); };
-        tabs.appendChild(t);
-      }
-    };
-    const renderGrid = () => {
-      grid.innerHTML = "";
-      for (const [key, f] of Object.entries(EFFECTS)) {
-        if (cat !== "all" && f.cat !== cat && key !== "none") continue;
-        if (query && !f.name.toLocaleLowerCase("tr").includes(query)) continue;
-        const it = document.createElement("button");
-        it.className = "fxTile" + (c.effect === key ? " sel" : "");
-        it.innerHTML = `<span class="tile" style="background:${f.grad}">${f.icon}</span><span class="nm">${f.name}</span>`;
-        it.onclick = () => {
-          c.effect = key;
-          grid.querySelectorAll(".fxTile").forEach(x => x.classList.remove("sel"));
-          it.classList.add("sel");
-          renderTimeline();
-          if (!state.playing && key !== "none") play();
-        };
-        grid.appendChild(it);
-      }
-    };
-    search.oninput = () => { query = search.value.trim().toLocaleLowerCase("tr"); renderGrid(); };
-    renderTabs();
-    renderGrid();
+    buildCatalog(body, {
+      cats: FX_CATS,
+      entries: EFFECTS,
+      selectedKey: () => c.effect,
+      renderTile: (key, f) => `<span class="tile" style="background:${f.grad}">${f.icon}</span><span class="nm">${f.name}</span>`,
+      onPick: key => {
+        c.effect = key;
+        renderTimeline();
+        if (!state.playing && key !== "none") play();
+      },
+    });
   });
 }
 
@@ -2092,25 +2381,17 @@ function openVolumeSheet() {
   });
 }
 
-/* ---------- Filtre ---------- */
+/* ---------- Filtreler (100+; arama + kategoriler) ---------- */
 function openFilterSheet() {
   const c = targetClip(); if (!c) return;
-  openSheet("Filtre", body => {
-    const grid = document.createElement("div");
-    grid.className = "filterGrid";
-    for (const [key, f] of Object.entries(FILTERS)) {
-      const it = document.createElement("button");
-      it.className = "fItem" + (c.filter === key ? " sel" : "");
-      it.innerHTML = `<span class="sw" style="filter:${f.css || "none"}"></span><span class="nm">${f.name}</span>`;
-      it.onclick = () => {
-        c.filter = key;
-        grid.querySelectorAll(".fItem").forEach(x => x.classList.remove("sel"));
-        it.classList.add("sel");
-        drawFrame();
-      };
-      grid.appendChild(it);
-    }
-    body.appendChild(grid);
+  openSheet("Filtreler", body => {
+    buildCatalog(body, {
+      cats: FILTER_CATS,
+      entries: FILTERS,
+      selectedKey: () => c.filter,
+      renderTile: (key, f) => `<span class="tile sw" style="filter:${f.css || "none"}"></span><span class="nm">${f.name}</span>`,
+      onPick: key => { c.filter = key; invalidate(); },
+    });
   });
 }
 
@@ -3730,10 +4011,169 @@ document.querySelectorAll(".hTool").forEach(b => {
 });
 document.querySelectorAll("#homeNav button").forEach(b => {
   b.addEventListener("click", () => {
-    if (b.dataset.nav === "projects") $("#projSection").scrollIntoView({ behavior: "smooth" });
-    else if (b.dataset.nav === "soon") toast("Yakında ✨");
+    const nav = b.dataset.nav;
+    if (nav === "soon") { toast("Yakında ✨"); return; }
+    document.querySelectorAll("#homeNav button").forEach(x => x.classList.toggle("act", x === b));
+    const view = nav === "templates" ? "homeViewTpl" : nav === "lab" ? "homeViewLab" : "homeViewEdit";
+    for (const id of ["homeViewEdit", "homeViewTpl", "homeViewLab"])
+      $("#" + id).style.display = id === view ? "block" : "none";
+    if (nav === "projects") $("#projSection").scrollIntoView({ behavior: "smooth" });
+    if (nav === "templates") renderTplList();
+    if (nav === "lab") renderLabList();
   });
 });
+
+/* ---------- Şablonlar: 108 hazır + otomatik üretici ---------- */
+const TPL_MUSIC = [
+  ["Phonk", "phonk", "rap"], ["Sigma", "sigma phonk", "rap"], ["Drill", "drill beat", "rap"],
+  ["Türkçe Rap", "türkçe rap", "rap"], ["Trap", "trap beat", "rap"], ["Hyperpop", "hyperpop", "pop"],
+  ["Pop", "pop hits", "pop"], ["Yaz", "summer dance", "pop"], ["EDM", "edm festival", "pop"],
+  ["Afro", "afrobeat", "pop"], ["Lofi", "lofi chill", "sakin"], ["Slowed", "slowed reverb", "sakin"],
+  ["Duygusal", "emotional piano", "sakin"], ["Jazz", "jazz vibes", "sakin"], ["Epik", "epic cinematic", "epik"],
+  ["Rock", "rock anthem", "epik"], ["Synthwave", "synthwave", "retro"], ["Retro 80s", "80s retro", "retro"],
+];
+const TPL_STYLES = [
+  { tag: "Hızlı Kesim", pace: .6, trans: "dip_black", filter: "canli5", effect: "none", anim: "pop" },
+  { tag: "Akıcı", pace: 1.3, trans: "fade", filter: "sicak4", effect: "none", anim: "fade" },
+  { tag: "Glitch", pace: .8, trans: "dissolve16", filter: "dramatik5", effect: "glitch2", anim: "typewriter" },
+  { tag: "Rüya", pace: 1.6, trans: "circleout", filter: "soluk5", effect: "bokeh2", anim: "fade" },
+  { tag: "Retro", pace: 1.2, trans: "blindsH8", filter: "retro6", effect: "vhs1", anim: "slideUp" },
+  { tag: "Enerji", pace: .5, trans: "zoomspin1", filter: "neon4", effect: "sparkle2", anim: "bounce" },
+];
+const TEMPLATES = [];
+TPL_MUSIC.forEach(([mn, q, cat], mi) => TPL_STYLES.forEach((st2, si) =>
+  TEMPLATES.push({ id: mi * 10 + si, name: mn + " · " + st2.tag, cat, query: q, style: st2 })));
+const TPL_CATS = { all: "Tümü", rap: "Rap/Phonk", pop: "Pop/Dans", sakin: "Sakin", epik: "Epik", retro: "Retro" };
+
+let pendingTemplate = null;
+let tplCat = "all";
+
+function renderTplList() {
+  const tabs = $("#tplTabs");
+  tabs.innerHTML = "";
+  for (const [k, label] of Object.entries(TPL_CATS)) {
+    const b = document.createElement("button");
+    b.className = "fxTab" + (tplCat === k ? " sel" : "");
+    b.textContent = label;
+    b.onclick = () => { tplCat = k; renderTplList(); };
+    tabs.appendChild(b);
+  }
+  const q = ($("#tplSearch").value || "").trim().toLocaleLowerCase("tr");
+  const list = $("#tplList");
+  list.innerHTML = "";
+  for (const tpl of TEMPLATES) {
+    if (tplCat !== "all" && tpl.cat !== tplCat) continue;
+    if (q && !tpl.name.toLocaleLowerCase("tr").includes(q)) continue;
+    const card = document.createElement("button");
+    card.className = "projCard";
+    const st2 = tpl.style;
+    card.innerHTML = `
+      <span class="pthumb" style="display:grid;place-items:center;font-size:22px;background:linear-gradient(135deg,#1d2740,#3b2b55)">🎬</span>
+      <span class="pinfo">
+        <span class="pname"></span>
+        <span class="pmeta tplMeta"></span>
+      </span>
+      <span class="pbtn">＋</span>`;
+    card.querySelector(".pname").textContent = tpl.name;
+    card.querySelector(".pmeta").textContent =
+      `🎵 ${tpl.query} · ${st2.pace}s tempo · ${(TRANSITIONS[st2.trans] || {}).name || ""}`;
+    card.onclick = () => useTemplate(tpl);
+    list.appendChild(card);
+  }
+}
+$("#tplSearch") && ($("#tplSearch").oninput = () => renderTplList());
+
+function randomTemplate() {
+  const keys = obj => Object.entries(obj).filter(([k, v]) => !v.hidden && k !== "none").map(([k]) => k);
+  const m = TPL_MUSIC[Math.floor(Math.random() * TPL_MUSIC.length)];
+  const tk = keys(TRANSITIONS), fk = keys(FILTERS), ek = keys(EFFECTS);
+  return {
+    name: "Otomatik · " + m[0], query: m[1],
+    style: {
+      tag: "Otomatik",
+      pace: [.5, .8, 1.2, 1.6][Math.floor(Math.random() * 4)],
+      trans: tk[Math.floor(Math.random() * tk.length)],
+      filter: fk[Math.floor(Math.random() * fk.length)],
+      effect: Math.random() < .5 ? "none" : ek[Math.floor(Math.random() * ek.length)],
+      anim: ["pop", "fade", "bounce", "slideUp", "typewriter"][Math.floor(Math.random() * 5)],
+    },
+  };
+}
+$("#btnAutoTpl").onclick = () => useTemplate(randomTemplate());
+
+function useTemplate(tpl) {
+  pendingTemplate = tpl;
+  newProject();
+  toast("Şablon: " + tpl.name + " — videolarını seç");
+}
+
+/* seçilen medyaya şablonu uygula: tempo kesimi + geçiş + filtre + efekt + başlık + müzik */
+async function applyTemplate(tpl) {
+  pushHistory();
+  const st2 = tpl.style;
+  for (const c of state.clips) {
+    c.filter = st2.filter;
+    if (st2.effect !== "none") c.effect = st2.effect;
+    c.out = Math.min(c.out, c.in + st2.pace * c.speed);
+    c.trans = { type: st2.trans, dur: Math.min(.5, st2.pace / 2) };
+  }
+  if (state.clips.length) state.clips[state.clips.length - 1].trans = { type: "none", dur: .5 };
+  state.overlays.push({
+    id: idSeq++, kind: "text", content: tpl.name.replace(" · Otomatik", ""),
+    start: 0, dur: Math.min(2.5, Math.max(totalDur(), 1)),
+    x: .5, y: .16, size: .065, color: "#fff", bg: true, animIn: st2.anim, loop: "none",
+  });
+  renderAll();
+  seekTo(0, true);
+  toast("Şablon uygulandı ✨");
+  try {
+    const items = await MUSIC_LIBS.itunes.search(tpl.query);
+    if (items.length) {
+      const pick = items[Math.floor(Math.random() * Math.min(items.length, 5))];
+      const u = await pick.resolve();
+      if (u) {
+        await addMusicFromUrl(u, pick.title);
+        const m = state.musics[state.musics.length - 1];
+        m.start = 0;
+        const nd = contentEnd();
+        if (nd > .3 && m.start + musicDur(m) > nd) m.out = Math.min(m.in + nd * m.speed, m.natDur);
+        renderTimeline();
+      }
+    }
+  } catch (_) { toast("Şablon müziği yüklenemedi (internet gerekli)"); }
+}
+
+/* ---------- YZ Lab ---------- */
+function renderLabList() {
+  const list = $("#labList");
+  list.innerHTML = "";
+  const items = [
+    ["🔍", "Video Upscale", "Çıktıyı %50 büyütüp yüksek kaliteli ölçekleme ile netleştirir. Dışa Aktar panelinden de açılabilir.", async () => {
+      if (!state.clips.length) { await newProject(); state.upscale = true; toast("🔍 Upscale bu projede açıldı"); return; }
+      state.upscale = true; enterEditor(); toast("🔍 Upscale açıldı — Dışa Aktar panelinden görebilirsin");
+    }],
+    ["🎞", "Kare Üretici", "60+ fps dışa aktarmada ara kareleri harmanlayarak üretir; hareket akıcılaşır.", async () => {
+      if (!state.clips.length) { await newProject(); state.frameGen = true; state.fps = 60; toast("🎞 Kare üretici açıldı (60 fps)"); return; }
+      state.frameGen = true; if (state.fps < 60) state.fps = 60; enterEditor(); toast("🎞 Kare üretici açıldı (60 fps)");
+    }],
+    ["🪄", "Otomatik Edit", "Videolarını seç; tempo kesimi, geçiş, filtre, efekt ve müziği otomatik uygular.", async () => {
+      if (state.clips.length) { enterEditor(); applyTemplate(randomTemplate()); }
+      else useTemplate(randomTemplate());
+    }],
+  ];
+  for (const [icon, nm, desc, act] of items) {
+    const card = document.createElement("button");
+    card.className = "projCard";
+    card.innerHTML = `
+      <span class="pthumb" style="display:grid;place-items:center;font-size:24px;background:linear-gradient(135deg,#0e3b36,#134e4a)">${icon}</span>
+      <span class="pinfo"><span class="pname"></span><span class="pmeta tplMeta"></span></span>
+      <span class="pbtn">▶</span>`;
+    card.querySelector(".pname").textContent = nm;
+    card.querySelector(".pmeta").textContent = desc;
+    card.onclick = act;
+    list.appendChild(card);
+  }
+}
 
 /* ---------- başlangıç ---------- */
 applyAspect();
