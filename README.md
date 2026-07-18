@@ -16,8 +16,12 @@ Ayarlar → Pages → dalı seç → yayınla.
 - 📹 **Çoklu klip**: Video ve fotoğraf ekle, sırala
 - ✂️ **Kırp & Böl**: Klip uçlarını tutamaçlarla kırp, oynatma çubuğundan ikiye böl
 - ⇄ **Geçişler**: Klipler arasında Solma, Siyah/Beyaz, Kaydırma, Silme, Yakınlaşma — süre ayarlı; zaman çizelgesindeki sınır düğmesinden eklenir
-- ✨ **Efektler**: Ken Burns, Nabız, Sarsıntı, VHS, Glitch, Film Greni, Vinyet, Kar, Yağmur, Parıltı
-- ⏩ **Hız**: 0.25x – 3x arası hız (yavaş çekim / hızlandırma)
+- ✨ **Efektler (CapCut tarzı panel)**: Arama + kategori sekmeleri (Trend / Atmosfer / Retro / Hareket); Arızalı Sinyal, Konfeti, Parıltı, VHS, Kalpler, Kar, Yağmur, Vinyet, Film Greni, Negatif Renk, Kamera Hareketi, Nabız, Titrek Aksama
+- 🖼 **Bindirme (PiP)**: Video/fotoğrafı katman olarak üstüne ekle — sesi mikslenir, süresi ve konumu ayarlanır
+- 🤏 **Dokunmatik dönüşüm**: Ana klip, metin, obje ve bindirmeleri tek parmakla taşı, iki parmakla yakınlaştır/boyutlandır
+- 🗂 **Katmanlar**: Üst üste binen öğelerde "öne getir / arkaya gönder" ile sıralama
+- ↔️ **Çubuk sürükleme**: Zaman çizelgesinde metin/obje/bindirme çubuklarını ortadan taşı, uçlarından uzat/kısalt
+- ⏩ **Hız**: 0.01x – 10x sürgüyle (logaritmik) + hazır değerler; "ses perdesini değiştir" aç/kapa
 - 🔊 **Ses**: Klip başına ses seviyesi
 - 🎨 **Filtreler**: Canlı, Sıcak, Soğuk, Siyah-Beyaz, Sepya, Retro, Dramatik
 - 🎛️ **Ayarla**: Parlaklık, kontrast, doygunluk
