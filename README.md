@@ -11,16 +11,21 @@ Ayarlar → Pages → dalı seç → yayınla.
 
 ## Özellikler
 
+- 🏠 **Ana ekran**: CapCut benzeri açılış menüsü, araç kısayolları ve proje listesi
+- 💾 **Otomatik kayıt**: Projeler medya dosyalarıyla birlikte IndexedDB'ye kaydedilir; sekmeyi kapatsan bile ana ekrandan geri açabilirsin (yeniden adlandır / sil dahil)
 - 📹 **Çoklu klip**: Video ve fotoğraf ekle, sırala
 - ✂️ **Kırp & Böl**: Klip uçlarını tutamaçlarla kırp, oynatma çubuğundan ikiye böl
+- ⇄ **Geçişler**: Klipler arasında Solma, Siyah/Beyaz, Kaydırma, Silme, Yakınlaşma — süre ayarlı; zaman çizelgesindeki sınır düğmesinden eklenir
+- ✨ **Efektler**: Ken Burns, Nabız, Sarsıntı, VHS, Glitch, Film Greni, Vinyet, Kar, Yağmur, Parıltı
 - ⏩ **Hız**: 0.25x – 3x arası hız (yavaş çekim / hızlandırma)
 - 🔊 **Ses**: Klip başına ses seviyesi
 - 🎨 **Filtreler**: Canlı, Sıcak, Soğuk, Siyah-Beyaz, Sepya, Retro, Dramatik
 - 🎛️ **Ayarla**: Parlaklık, kontrast, doygunluk
-- 🅣 **Metin**: Renk, boyut, arka plan; önizlemede sürükleyerek konumlandır
+- 🅣 **Animasyonlu metin**: Giriş animasyonları (Pop, Solma, Kayma, Zıplama, Dönme, Daktilo) + döngü hareketleri (Dalga, Gökkuşağı, Nabız, Süzülme, Titreme); sürükleyerek konumlandır
+- 😀 **Bindirme objeler**: Emoji çıkartmaları, giriş animasyonu + sürekli hareket (süzülme, dönme, nabız…), boyut/süre ayarı, sürükleyerek taşıma
 - 🎵 **Müzik**: Cihazından ses dosyası ekle, seviyesini ayarla
 - ⬛ **En-boy oranı**: 9:16, 16:9, 1:1, 4:5
-- 📤 **Dışa aktarma**: Ses miksajıyla birlikte WebM/MP4 (MediaRecorder) — sunucusuz, tamamen tarayıcıda
+- 📤 **Dışa aktarma**: Ses miksajıyla birlikte WebM/MP4 (MediaRecorder) — geçişler, efektler ve animasyonlar dahil, sunucusuz
 
 ## Nasıl çalışıyor?
 
@@ -32,4 +37,4 @@ Ayarlar → Pages → dalı seç → yayınla.
 
 - Dışa aktarma gerçek zamanlıdır (5 dakikalık video ≈ 5 dakika sürer).
 - Kodek desteği tarayıcıya bağlıdır; iOS Safari MP4, Chrome/Android WebM üretir.
-- Proje kaydetme yoktur; sekme kapanınca kurgu sıfırlanır.
+- Projeler tarayıcının IndexedDB deposunda tutulur; tarayıcı verilerini/site verilerini silersen projeler de silinir ve başka cihazdan erişilemez.

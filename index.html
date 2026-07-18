@@ -126,6 +126,7 @@
     font-size:8px; line-height:12px; color:#0b0b14; font-weight:700;
     padding:0 5px; overflow:hidden; white-space:nowrap;
   }
+  .textBar.stk { background:linear-gradient(135deg,#fb923c,#f472b6); }
   .textBar.sel { outline:2px solid #fff; }
 
   #clipTrack { height:56px; position:relative; display:flex; align-items:center; }
@@ -135,7 +136,6 @@
     background-size:auto 100%; background-repeat:repeat-x;
     outline:1px solid rgba(255,255,255,.08); outline-offset:-1px;
   }
-  .clip + .clip { margin-left:3px; }
   .clip.sel { outline:2px solid var(--accent); outline-offset:-2px; }
   .clip .badge {
     position:absolute; left:4px; bottom:3px;
@@ -159,6 +159,13 @@
     width:2px; height:16px; background:rgba(0,0,0,.55); border-radius:2px;
   }
   .handle.l::before { left:5px; } .handle.r::before { right:5px; }
+  .transBtn {
+    position:absolute; top:50%; transform:translate(-50%,-50%);
+    width:22px; height:22px; border-radius:7px; z-index:4;
+    background:var(--bg); border:1px solid var(--line); color:var(--dim);
+    font-size:10px; display:grid; place-items:center; line-height:1;
+  }
+  .transBtn.on { background:var(--accent); border-color:var(--accent); color:#04211e; font-weight:900; }
   #addClipBtn {
     flex:0 0 auto; width:40px; height:52px; margin-left:8px;
     border-radius:8px; background:var(--bg3); color:var(--dim);
@@ -183,7 +190,7 @@
   }
   #toolbar::-webkit-scrollbar { display:none; }
   .tool {
-    flex:0 0 auto; width:60px; display:flex; flex-direction:column; align-items:center; gap:4px;
+    flex:0 0 auto; width:58px; display:flex; flex-direction:column; align-items:center; gap:4px;
     padding:6px 0; border-radius:10px; color:var(--text);
   }
   .tool .ic { font-size:19px; }
@@ -214,15 +221,25 @@
     font-size:12px; color:var(--text); border:1px solid transparent;
   }
   .chip.sel { border-color:var(--accent); color:var(--accent); font-weight:700; }
+  .subhead { font-size:11px; color:var(--dim); font-weight:700; letter-spacing:.5px; text-transform:uppercase; margin:14px 0 8px; }
   .filterGrid { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
   .fItem { display:flex; flex-direction:column; align-items:center; gap:5px; }
   .fItem .sw {
     width:100%; aspect-ratio:1; border-radius:10px; border:2px solid transparent;
     background:linear-gradient(135deg,#f59e0b,#3b82f6,#10b981);
   }
-  .fItem.sel .sw { border-color:var(--accent); }
+  .fItem .em {
+    width:100%; aspect-ratio:1; border-radius:10px; border:2px solid transparent;
+    background:var(--bg3); display:grid; place-items:center; font-size:26px;
+  }
+  .fItem.sel .sw, .fItem.sel .em { border-color:var(--accent); }
   .fItem .nm { font-size:10px; color:var(--dim); }
   .fItem.sel .nm { color:var(--accent); }
+  .emojiGrid { display:grid; grid-template-columns:repeat(6,1fr); gap:6px; }
+  .emojiGrid button {
+    aspect-ratio:1; font-size:26px; background:var(--bg3); border-radius:10px;
+    display:grid; place-items:center;
+  }
   .sheetBtn {
     display:block; width:100%; text-align:center;
     background:var(--bg3); border-radius:var(--radius);
@@ -264,12 +281,80 @@
     opacity:0; pointer-events:none; transition:all .2s; white-space:nowrap;
   }
   #toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+
+  /* ---------- Ana ekran (proje menüsü) ---------- */
+  #home {
+    position:fixed; inset:0; z-index:60;
+    background:var(--bg);
+    display:flex; flex-direction:column;
+  }
+  #homeScroll { flex:1; overflow-y:auto; padding:calc(14px + var(--safe-t)) 16px 20px; }
+  #homeBrand { display:flex; align-items:center; gap:8px; font-weight:800; font-size:17px; margin-bottom:16px; }
+  #homeBrand .logo {
+    width:30px; height:30px; border-radius:9px; display:grid; place-items:center;
+    background:linear-gradient(135deg, var(--accent), #818cf8); color:#06060a; font-size:15px; font-weight:900;
+  }
+  #homeTop { display:flex; gap:10px; margin-bottom:22px; }
+  #btnNewProject {
+    flex:2.4; height:76px; border-radius:16px;
+    background:linear-gradient(135deg,#a8c7fa,#c5d9fb);
+    display:grid; place-items:center;
+  }
+  #btnNewProject .plus {
+    width:44px; height:44px; border-radius:13px; background:#15151c;
+    display:grid; place-items:center; color:#fff; font-size:24px; font-weight:300;
+  }
+  #btnNewPhoto {
+    flex:1; height:76px; border-radius:16px;
+    background:linear-gradient(135deg,#9fbef5,#b9cff8);
+    display:grid; place-items:center; font-size:26px;
+  }
+  .homeGrid {
+    display:grid; grid-template-columns:repeat(3,1fr); gap:22px 8px;
+    margin-bottom:26px;
+  }
+  .hTool { display:flex; flex-direction:column; align-items:center; gap:7px; color:var(--text); }
+  .hTool .ic {
+    width:46px; height:46px; border-radius:13px; background:var(--bg3);
+    display:grid; place-items:center; font-size:21px;
+  }
+  .hTool .lb { font-size:11px; color:var(--dim); text-align:center; }
+  #projSection h2 { font-size:14px; font-weight:700; margin-bottom:10px; }
+  .projCard {
+    display:flex; align-items:center; gap:12px;
+    background:var(--bg2); border:1px solid var(--line); border-radius:14px;
+    padding:10px; margin-bottom:10px; width:100%; text-align:left;
+  }
+  .projCard .pthumb {
+    width:66px; height:48px; border-radius:8px; background:var(--bg3) center/cover;
+    flex:0 0 auto;
+  }
+  .projCard .pinfo { flex:1; min-width:0; }
+  .projCard .pname { font-size:13px; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .projCard .pmeta { font-size:11px; color:var(--dim); margin-top:3px; }
+  .projCard .pbtn {
+    width:32px; height:32px; border-radius:8px; background:var(--bg3);
+    display:grid; place-items:center; font-size:13px; flex:0 0 auto;
+  }
+  #projEmpty { color:var(--dim); font-size:12px; text-align:center; padding:22px 0; }
+  #homeNav {
+    flex:0 0 auto; display:flex; justify-content:space-around;
+    padding:8px 4px calc(10px + var(--safe-b));
+    background:var(--bg2); border-top:1px solid var(--line);
+  }
+  #homeNav button { display:flex; flex-direction:column; align-items:center; gap:3px; font-size:10px; color:var(--dim); width:60px; }
+  #homeNav button .nic { font-size:18px; }
+  #homeNav button.act { color:var(--text); font-weight:700; }
+  #btnHome {
+    width:32px; height:32px; border-radius:9px; background:var(--bg3);
+    display:grid; place-items:center; font-size:18px; margin-right:2px;
+  }
 </style>
 </head>
 <body>
 
 <header id="topbar">
-  <div class="brand"><span class="logo">P</span> Pisan Cut</div>
+  <div class="brand"><button id="btnHome" title="Projelere dön">‹</button><span class="logo">P</span> Pisan Cut</div>
   <button id="btnExport" disabled>Dışa Aktar</button>
 </header>
 
@@ -308,11 +393,14 @@
 <nav id="toolbar">
   <button class="tool" data-tool="add"><span class="ic">➕</span><span class="lb">Ekle</span></button>
   <button class="tool needsel" data-tool="split"><span class="ic">✂️</span><span class="lb">Böl</span></button>
+  <button class="tool needsel" data-tool="transition"><span class="ic">⇄</span><span class="lb">Geçiş</span></button>
+  <button class="tool needsel" data-tool="effect"><span class="ic">✨</span><span class="lb">Efekt</span></button>
   <button class="tool needsel" data-tool="speed"><span class="ic">⏩</span><span class="lb">Hız</span></button>
   <button class="tool needsel" data-tool="volume"><span class="ic">🔊</span><span class="lb">Ses</span></button>
   <button class="tool needsel" data-tool="filter"><span class="ic">🎨</span><span class="lb">Filtre</span></button>
   <button class="tool needsel" data-tool="adjust"><span class="ic">🎛️</span><span class="lb">Ayarla</span></button>
   <button class="tool" data-tool="text"><span class="ic">🅣</span><span class="lb">Metin</span></button>
+  <button class="tool" data-tool="sticker"><span class="ic">😀</span><span class="lb">Obje</span></button>
   <button class="tool" data-tool="music"><span class="ic">🎵</span><span class="lb">Müzik</span></button>
   <button class="tool needsel" data-tool="duplicate"><span class="ic">⧉</span><span class="lb">Kopyala</span></button>
   <button class="tool" data-tool="aspect"><span class="ic">⬛</span><span class="lb">Oran</span></button>
@@ -338,14 +426,47 @@
 
 <div id="toast"></div>
 
+<div id="home">
+  <div id="homeScroll">
+    <div id="homeBrand"><span class="logo">P</span> Pisan Cut</div>
+    <div id="homeTop">
+      <button id="btnNewProject"><span class="plus">＋</span></button>
+      <button id="btnNewPhoto">🖼️</button>
+    </div>
+    <div class="homeGrid">
+      <button class="hTool" data-htool="split"><span class="ic">✂️</span><span class="lb">Kes & Böl</span></button>
+      <button class="hTool" data-htool="transition"><span class="ic">⇄</span><span class="lb">Geçişler</span></button>
+      <button class="hTool" data-htool="effect"><span class="ic">✨</span><span class="lb">Efektler</span></button>
+      <button class="hTool" data-htool="text"><span class="ic">🅣</span><span class="lb">Metin</span></button>
+      <button class="hTool" data-htool="sticker"><span class="ic">😀</span><span class="lb">Objeler</span></button>
+      <button class="hTool" data-htool="speed"><span class="ic">⏩</span><span class="lb">Hızı ayarla</span></button>
+      <button class="hTool" data-htool="filter"><span class="ic">🎨</span><span class="lb">Filtreler</span></button>
+      <button class="hTool" data-htool="music"><span class="ic">🎵</span><span class="lb">Müzik</span></button>
+      <button class="hTool" data-htool="aspect"><span class="ic">⬛</span><span class="lb">En-boy oranı</span></button>
+    </div>
+    <div id="projSection">
+      <h2>Projeler</h2>
+      <div id="projList"></div>
+    </div>
+  </div>
+  <nav id="homeNav">
+    <button class="act" data-nav="edit"><span class="nic">✂️</span>Düzenle</button>
+    <button data-nav="soon"><span class="nic">▦</span>Şablonlar</button>
+    <button data-nav="soon"><span class="nic">🧪</span>YZ Lab</button>
+    <button data-nav="projects"><span class="nic">📁</span>Projeler</button>
+    <button data-nav="soon"><span class="nic">👤</span>Ben</button>
+  </nav>
+</div>
+
 <input type="file" id="fileVideo" accept="video/*,image/*" multiple hidden>
 <input type="file" id="fileMusic" accept="audio/*" hidden>
 
 <script>
 "use strict";
 /* =========================================================
-   Pisan Cut — tek dosyalık, CapCut benzeri mobil video editörü
-   Kayıt yok, sunucu yok: her şey tarayıcıda çalışır.
+   Pisan Cut v2 — tek dosyalık, CapCut benzeri mobil video editörü
+   Yeni: klip geçişleri, video/foto efektleri, animasyonlu
+   metinler ve hareketli bindirme objeler (çıkartmalar).
    ========================================================= */
 
 const $ = s => document.querySelector(s);
@@ -369,26 +490,115 @@ const FILTERS = {
   dramatic:{ name: "Dramatik", css: "contrast(1.3) brightness(.92) saturate(1.1)" },
 };
 
+const EFFECTS = {
+  none:     { name: "Yok",        icon: "🚫" },
+  kenburns: { name: "Ken Burns",  icon: "🔍" },
+  pulse:    { name: "Nabız",      icon: "💓" },
+  shake:    { name: "Sarsıntı",   icon: "📳" },
+  vhs:      { name: "VHS",        icon: "📼" },
+  glitch:   { name: "Glitch",     icon: "👾" },
+  grain:    { name: "Film Greni", icon: "🎞️" },
+  vignette: { name: "Vinyet",     icon: "🌑" },
+  snow:     { name: "Kar",        icon: "❄️" },
+  rain:     { name: "Yağmur",     icon: "🌧️" },
+  sparkle:  { name: "Parıltı",    icon: "✨" },
+};
+
+const TRANSITIONS = {
+  none:   "Yok",
+  fade:   "Solma",
+  black:  "Siyah",
+  white:  "Beyaz",
+  slideL: "Sola Kay",
+  slideR: "Sağa Kay",
+  slideU: "Yukarı Kay",
+  wipe:   "Silme",
+  zoom:   "Yakınlaş",
+};
+
+const ANIM_IN = {
+  none: "Yok", fade: "Solma", pop: "Pop", slideUp: "Yukarı",
+  slideDown: "Aşağı", fromLeft: "Soldan", fromRight: "Sağdan",
+  bounce: "Zıpla", spin: "Dön", typewriter: "Daktilo",
+};
+const ANIM_LOOP = {
+  none: "Yok", pulse: "Nabız", float: "Süzül", shake: "Titre",
+  spin: "Dön", wave: "Dalga", rainbow: "Gökkuşağı",
+};
+const TEXT_ONLY_ANIMS = ["typewriter", "wave", "rainbow"];
+
 const TEXT_COLORS = ["#ffffff","#0b0b0f","#f43f5e","#f59e0b","#22c55e","#3b82f6","#a855f7","#2dd4bf"];
+const EMOJIS = ["😂","😍","🔥","❤️","👍","🎉","✨","⭐","💯","😎","🥳","😭","💪","👏","🙏","🤣","😜","🤩","💖","🌟","⚡","🎵","🏆","👑"];
 
 const state = {
-  clips: [],       // {id,type:'video'|'image',url,name,el,natDur,in,out,speed,volume,filter,adjust:{b,c,s},thumb}
-  texts: [],       // {id,content,start,dur,x,y,size,color,bg}
+  clips: [],       // {id,type,url,name,el,natDur,in,out,speed,volume,filter,adjust,effect,trans,thumb}
+  overlays: [],    // {id,kind:'text'|'sticker',content,start,dur,x,y,size,color,bg,animIn,loop}
   music: null,     // {url,name,el,volume}
   aspect: "9:16",
   t: 0,
   playing: false,
   pps: 56,         // piksel / saniye
   selClip: null,
-  selText: null,
+  selOv: null,
+  projectId: null,
+  projectName: "",
 };
 let idSeq = 1;
+let pendingTool = null;   // ana ekran kısayolundan gelinince açılacak panel
+let lastSavedJson = "";
+
+/* ---------- IndexedDB (proje + medya kalıcılığı) ---------- */
+let _db = null;
+function idb() {
+  return new Promise((res, rej) => {
+    if (_db) return res(_db);
+    const r = indexedDB.open("pisancut", 1);
+    r.onupgradeneeded = () => {
+      r.result.createObjectStore("projects", { keyPath: "id" });
+      r.result.createObjectStore("media", { keyPath: "id" });
+    };
+    r.onsuccess = () => { _db = r.result; res(_db); };
+    r.onerror = () => rej(r.error);
+  });
+}
+const idbPut = (store, val) => idb().then(d => new Promise((res, rej) => {
+  const tx = d.transaction(store, "readwrite");
+  tx.objectStore(store).put(val);
+  tx.oncomplete = res; tx.onerror = () => rej(tx.error);
+}));
+const idbGet = (store, key) => idb().then(d => new Promise((res, rej) => {
+  const rq = d.transaction(store).objectStore(store).get(key);
+  rq.onsuccess = () => res(rq.result); rq.onerror = () => rej(rq.error);
+}));
+const idbAll = store => idb().then(d => new Promise((res, rej) => {
+  const rq = d.transaction(store).objectStore(store).getAll();
+  rq.onsuccess = () => res(rq.result || []); rq.onerror = () => rej(rq.error);
+}));
+const idbDel = (store, key) => idb().then(d => new Promise((res, rej) => {
+  const tx = d.transaction(store, "readwrite");
+  tx.objectStore(store).delete(key);
+  tx.oncomplete = res; tx.onerror = () => rej(tx.error);
+}));
+const uid = () => (crypto.randomUUID ? crypto.randomUUID() : "m" + Date.now() + Math.random().toString(36).slice(2));
 
 /* ---------- yardımcılar ---------- */
 const clipDur = c => (c.out - c.in) / c.speed;
+const totalDur = () => state.clips.reduce((a, c) => a + clipDur(c), 0);
 /* Seçili klip yoksa oynatma çubuğunun altındaki klibi hedefle */
 const targetClip = () => state.selClip || (locate(state.t) || {}).clip || null;
-const totalDur = () => state.clips.reduce((a, c) => a + clipDur(c), 0);
+const clamp = (v, a, b) => Math.min(Math.max(v, a), b);
+const easeOut = p => 1 - Math.pow(1 - p, 3);
+const easeInOut = p => p < .5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+/* deterministik sözde-rastgele (efektler her karede aynı tohumla çizilir) */
+const n1 = s => { const x = Math.sin(s * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
+function bounceOut(p) {
+  const n = 7.5625, d = 2.75;
+  if (p < 1 / d) return n * p * p;
+  if (p < 2 / d) return n * (p -= 1.5 / d) * p + .75;
+  if (p < 2.5 / d) return n * (p -= 2.25 / d) * p + .9375;
+  return n * (p -= 2.625 / d) * p + .984375;
+}
+
 function clipStart(c) {
   let t = 0;
   for (const k of state.clips) { if (k === c) return t; t += clipDur(k); }
@@ -399,7 +609,7 @@ function locate(t) {
   for (const c of state.clips) {
     const d = clipDur(c);
     if (t < acc + d || c === state.clips[state.clips.length - 1]) {
-      return { clip: c, offset: Math.min(Math.max(t - acc, 0), d) };
+      return { clip: c, offset: clamp(t - acc, 0, d) };
     }
     acc += d;
   }
@@ -430,15 +640,23 @@ $("#fileVideo").onchange = async e => {
   }
   renderAll();
   seekTo(state.t, true);
+  if (pendingTool && state.clips.length) {
+    const t = pendingTool;
+    pendingTool = null;
+    setTimeout(() => handleTool(t), 250);
+  }
 };
 
 function addMedia(file) {
   return new Promise(resolve => {
     const url = URL.createObjectURL(file);
+    const mediaId = uid();
+    idbPut("media", { id: mediaId, blob: file, name: file.name, type: file.type }).catch(() => {});
     if (file.type.startsWith("image/")) {
       const img = new Image();
       img.onload = () => {
         const c = mkClip("image", url, file.name, img, 3);
+        c.mediaId = mediaId;
         c.thumb = makeThumb(img, img.naturalWidth, img.naturalHeight);
         state.clips.push(c);
         resolve();
@@ -455,6 +673,7 @@ function addMedia(file) {
         v.onloadedmetadata = null;
         const dur = await resolveDuration(v);
         const c = mkClip("video", url, file.name, v, dur);
+        c.mediaId = mediaId;
         state.clips.push(c);
         grabThumb(c);
         resolve();
@@ -488,6 +707,8 @@ function mkClip(type, url, name, el, natDur) {
     natDur, in: 0, out: natDur,
     speed: 1, volume: 1, filter: "none",
     adjust: { b: 1, c: 1, s: 1 },
+    effect: "none",
+    trans: { type: "none", dur: .6 },  // bu klipten SONRAKİNE geçiş
     thumb: null,
   };
 }
@@ -523,56 +744,294 @@ function buildFilter(c) {
   return (f + " " + adj).trim();
 }
 
-function drawFrame() {
+/* klibin karesini kapla-sığdır + dönüşüm/saydamlık/kırpma ile çiz */
+function drawClipImage(c, o = {}) {
   const W = canvas.width, H = canvas.height;
+  const src = c.el;
+  const sw = c.type === "image" ? src.naturalWidth : src.videoWidth;
+  const sh = c.type === "image" ? src.naturalHeight : src.videoHeight;
+  if (!sw || !sh) return;
+  const fit = Math.min(W / sw, H / sh);
+  const dw = sw * fit, dh = sh * fit;
+  ctx.save();
+  if (o.clipRect) { ctx.beginPath(); ctx.rect(...o.clipRect); ctx.clip(); }
+  ctx.globalAlpha = o.alpha ?? 1;
+  ctx.translate(W / 2 + (o.tx || 0), H / 2 + (o.ty || 0));
+  const s = o.scale || 1;
+  ctx.scale(s, s);
+  ctx.filter = buildFilter(c);
+  ctx.drawImage(src, -dw / 2, -dh / 2, dw, dh);
+  ctx.restore();
   ctx.filter = "none";
-  ctx.fillStyle = "#000";
-  ctx.fillRect(0, 0, W, H);
-  const loc = locate(state.t);
-  if (loc) {
-    const c = loc.clip;
-    const src = c.el;
-    const sw = c.type === "image" ? src.naturalWidth : src.videoWidth;
-    const sh = c.type === "image" ? src.naturalHeight : src.videoHeight;
-    if (sw && sh) {
-      const scale = Math.min(W / sw, H / sh);
-      const dw = sw * scale, dh = sh * scale;
-      ctx.filter = buildFilter(c);
-      ctx.drawImage(src, (W - dw) / 2, (H - dh) / 2, dw, dh);
-      ctx.filter = "none";
+}
+
+/* efektin klip çizimine uyguladığı dönüşüm (sarsıntı, nabız, ken burns) */
+function effectTransform(c, into) {
+  const W = canvas.width;
+  switch (c.effect) {
+    case "shake": {
+      const f = Math.floor(state.t * 18);
+      return { tx: (n1(f) - .5) * 16, ty: (n1(f + 31) - .5) * 16, scale: 1.03 };
+    }
+    case "pulse":
+      return { scale: 1 + .045 * Math.sin(state.t * Math.PI * 2 * 1.3) };
+    case "kenburns": {
+      const pr = clamp(into / Math.max(clipDur(c), .01), 0, 1);
+      const dir = c.id % 2 ? 1 : -1;
+      return { scale: 1.06 + .22 * pr, tx: dir * (pr - .5) * .05 * W };
     }
   }
-  // metin katmanları
-  for (const tx of state.texts) {
-    if (state.t < tx.start || state.t > tx.start + tx.dur) continue;
-    const px = tx.size * H;
-    ctx.font = `700 ${px}px -apple-system, "Segoe UI", Roboto, sans-serif`;
-    ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    const x = tx.x * W, y = tx.y * H;
-    const lines = tx.content.split("\n");
+  return {};
+}
+
+/* klip üstüne çizilen efekt katmanları */
+function drawEffectOverlay(c) {
+  const W = canvas.width, H = canvas.height, t = state.t;
+  switch (c.effect) {
+    case "vignette": {
+      const g = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * .35, W / 2, H / 2, Math.max(W, H) * .72);
+      g.addColorStop(0, "rgba(0,0,0,0)");
+      g.addColorStop(1, "rgba(0,0,0,.6)");
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, H);
+      break;
+    }
+    case "grain":
+      drawNoise(.12);
+      break;
+    case "vhs": {
+      drawNoise(.06);
+      ctx.fillStyle = "rgba(0,0,0,.14)";
+      for (let y = 0; y < H; y += 4) ctx.fillRect(0, y, W, 1.4);
+      const by = (t * 90) % (H + 160) - 80;
+      const g = ctx.createLinearGradient(0, by, 0, by + 80);
+      g.addColorStop(0, "rgba(255,255,255,0)");
+      g.addColorStop(.5, "rgba(255,255,255,.07)");
+      g.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = g;
+      ctx.fillRect(0, by, W, 80);
+      ctx.fillStyle = "rgba(0,255,230,.03)";
+      ctx.fillRect(0, 0, W, H);
+      break;
+    }
+    case "glitch": {
+      const burst = n1(Math.floor(t * 1.7));
+      if (burst > .42) {
+        const k = 3 + Math.floor(n1(Math.floor(t * 9)) * 4);
+        for (let i = 0; i < k; i++) {
+          const seed = Math.floor(t * 12) * 10 + i;
+          const sy = n1(seed) * H;
+          const sh = 8 + n1(seed + 1) * 46;
+          const dx = (n1(seed + 2) - .5) * 60;
+          try { ctx.drawImage(canvas, 0, sy, W, sh, dx, sy, W, sh); } catch (_) {}
+          ctx.fillStyle = i % 2 ? "rgba(255,0,80,.08)" : "rgba(0,255,255,.08)";
+          ctx.fillRect(0, sy, W, sh);
+        }
+      }
+      break;
+    }
+    case "snow":
+      for (let i = 0; i < 55; i++) {
+        const sp = 26 + n1(i + 7) * 55;
+        const x = (n1(i) * W + Math.sin(t * .8 + i) * 26 + W) % W;
+        const y = (n1(i + 99) * H + t * sp) % H;
+        ctx.globalAlpha = .55 + n1(i + 3) * .4;
+        ctx.fillStyle = "#fff";
+        ctx.beginPath();
+        ctx.arc(x, y, 1.2 + n1(i + 5) * 2.4, 0, 7);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+      break;
+    case "rain":
+      ctx.strokeStyle = "rgba(180,210,255,.4)";
+      ctx.lineWidth = 1.4;
+      for (let i = 0; i < 70; i++) {
+        const sp = 380 + n1(i + 9) * 260;
+        const x = (n1(i) * W + t * 60) % W;
+        const y = (n1(i + 50) * H + t * sp) % H;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x - 3, y + 15);
+        ctx.stroke();
+      }
+      break;
+    case "sparkle":
+      for (let i = 0; i < 26; i++) {
+        const tw = (Math.sin(t * 3.2 + i * 2.1) + 1) / 2;
+        if (tw < .25) continue;
+        const x = n1(i) * W, y = n1(i + 31) * H;
+        const r = (1.5 + n1(i + 13) * 3.5) * tw;
+        ctx.globalAlpha = tw * .95;
+        ctx.strokeStyle = "#fff";
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.moveTo(x - r * 2, y); ctx.lineTo(x + r * 2, y);
+        ctx.moveTo(x, y - r * 2); ctx.lineTo(x, y + r * 2);
+        ctx.stroke();
+        ctx.fillStyle = "#fff";
+        ctx.beginPath(); ctx.arc(x, y, r * .55, 0, 7); ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+      break;
+  }
+}
+
+let noisePat = null;
+function drawNoise(alpha) {
+  if (!noisePat) {
+    const nc = document.createElement("canvas");
+    nc.width = nc.height = 160;
+    const nx = nc.getContext("2d");
+    const d = nx.createImageData(160, 160);
+    for (let i = 0; i < d.data.length; i += 4) {
+      const v = Math.random() * 255;
+      d.data[i] = d.data[i + 1] = d.data[i + 2] = v;
+      d.data[i + 3] = 255;
+    }
+    nx.putImageData(d, 0, 0);
+    noisePat = ctx.createPattern(nc, "repeat");
+  }
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(-Math.random() * 160, -Math.random() * 160);
+  ctx.fillStyle = noisePat;
+  ctx.fillRect(0, 0, canvas.width + 160, canvas.height + 160);
+  ctx.restore();
+}
+
+/* önceki klipten aktif klibe geçiş: p 0→1 (önceki ayrılıyor) */
+function drawTransition(prev, type, p) {
+  const W = canvas.width, H = canvas.height;
+  const e = easeInOut(p);
+  switch (type) {
+    case "fade":   drawClipImage(prev, { alpha: 1 - e }); break;
+    case "black":
+    case "white":
+      ctx.save();
+      ctx.globalAlpha = 1 - e;
+      ctx.fillStyle = type === "black" ? "#000" : "#fff";
+      ctx.fillRect(0, 0, W, H);
+      ctx.restore();
+      break;
+    case "slideL": drawClipImage(prev, { tx: -e * W }); break;
+    case "slideR": drawClipImage(prev, { tx:  e * W }); break;
+    case "slideU": drawClipImage(prev, { ty: -e * H }); break;
+    case "wipe":   drawClipImage(prev, { clipRect: [e * W, 0, W * (1 - e), H] }); break;
+    case "zoom":   drawClipImage(prev, { alpha: 1 - e, scale: 1 + e * 1.3 }); break;
+  }
+}
+
+/* ---------- bindirme animasyonları ---------- */
+function animState(o) {
+  const local = state.t - o.start;
+  const inDur = Math.min(.55, o.dur * .35);
+  const outDur = Math.min(.3, o.dur * .2);
+  let alpha = 1, dx = 0, dy = 0, sc = 1, rot = 0;
+  if (o.animIn && o.animIn !== "none" && o.animIn !== "typewriter") {
+    const p = clamp(local / inDur, 0, 1);
+    const ep = easeOut(p), q = 1 - ep;
+    switch (o.animIn) {
+      case "fade":      alpha = ep; break;
+      case "pop":       alpha = Math.min(p * 2.5, 1); sc = .2 + .8 * ep + .16 * Math.sin(Math.PI * ep); break;
+      case "slideUp":   alpha = ep; dy = q * .22; break;
+      case "slideDown": alpha = ep; dy = -q * .22; break;
+      case "fromRight": alpha = ep; dx = q * .45; break;
+      case "fromLeft":  alpha = ep; dx = -q * .45; break;
+      case "bounce":    alpha = Math.min(p * 3, 1); dy = -(1 - bounceOut(p)) * .35; break;
+      case "spin":      alpha = ep; rot = q * Math.PI * 2; sc = Math.max(ep, .05); break;
+    }
+    const rem = o.start + o.dur - state.t;
+    if (rem < outDur) alpha *= clamp(rem / outDur, 0, 1);
+  }
+  switch (o.loop) {
+    case "pulse": sc *= 1 + .07 * Math.sin(state.t * 5 + o.id); break;
+    case "float": dy += .015 * Math.sin(state.t * 2.4 + o.id); break;
+    case "shake": {
+      const f = Math.floor(state.t * 22);
+      dx += (n1(f + o.id) - .5) * .02;
+      dy += (n1(f + o.id + 7) - .5) * .02;
+      break;
+    }
+    case "spin": rot += state.t * 2.4; break;
+  }
+  return { alpha, dx, dy, sc, rot, local };
+}
+
+function drawOverlayItem(o) {
+  if (state.t < o.start || state.t > o.start + o.dur) return;
+  const W = canvas.width, H = canvas.height;
+  const st = animState(o);
+  if (st.alpha <= 0.01) return;
+  const px = o.size * H;
+  ctx.save();
+  ctx.globalAlpha = st.alpha;
+  ctx.translate(o.x * W + st.dx * W, o.y * H + st.dy * H);
+  ctx.rotate(st.rot);
+  ctx.scale(st.sc, st.sc);
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.font = `700 ${px}px -apple-system, "Segoe UI", Roboto, sans-serif`;
+
+  if (o.kind === "sticker") {
+    ctx.fillText(o.content, 0, 0);
+  } else {
+    let lines = o.content.split("\n");
+    /* daktilo: karakterleri süreyle aç */
+    if (o.animIn === "typewriter") {
+      const totalCh = o.content.replace(/\n/g, "").length;
+      const typeDur = Math.min(1.4, o.dur * .45);
+      let shown = Math.ceil(totalCh * clamp(st.local / typeDur, 0, 1));
+      lines = lines.map(ln => {
+        const take = clamp(shown, 0, ln.length);
+        shown -= ln.length;
+        return ln.slice(0, take);
+      });
+    }
+    let charIdx = 0;
     lines.forEach((ln, i) => {
-      const ly = y + (i - (lines.length - 1) / 2) * px * 1.2;
-      if (tx.bg) {
+      const ly = (i - (lines.length - 1) / 2) * px * 1.2;
+      if (o.bg && ln.length) {
         const m = ctx.measureText(ln);
         ctx.fillStyle = "rgba(0,0,0,.55)";
         const pad = px * .3;
-        roundRect(x - m.width / 2 - pad, ly - px / 2 - pad * .4, m.width + pad * 2, px + pad * .8, px * .25);
+        roundRect(-m.width / 2 - pad, ly - px / 2 - pad * .4, m.width + pad * 2, px + pad * .8, px * .25);
       }
-      ctx.fillStyle = tx.color;
       ctx.strokeStyle = "rgba(0,0,0,.4)";
       ctx.lineWidth = px * .06;
-      ctx.strokeText(ln, x, ly);
-      ctx.fillText(ln, x, ly);
+      if (o.loop === "wave" || o.loop === "rainbow") {
+        /* karakter karakter: dalga / gökkuşağı */
+        const widths = [...ln].map(ch => ctx.measureText(ch).width);
+        const total = widths.reduce((a, b) => a + b, 0);
+        let cx = -total / 2;
+        [...ln].forEach((ch, k) => {
+          const ccx = cx + widths[k] / 2;
+          const cdy = o.loop === "wave" ? Math.sin(state.t * 5 + charIdx * .55) * px * .16 : 0;
+          ctx.fillStyle = o.loop === "rainbow"
+            ? `hsl(${(state.t * 110 + charIdx * 26) % 360} 90% 62%)`
+            : o.color;
+          ctx.strokeText(ch, ccx, ly + cdy);
+          ctx.fillText(ch, ccx, ly + cdy);
+          cx += widths[k];
+          charIdx++;
+        });
+      } else {
+        ctx.fillStyle = o.color;
+        ctx.strokeText(ln, 0, ly);
+        ctx.fillText(ln, 0, ly);
+      }
     });
-    if (tx === state.selText) {
-      ctx.strokeStyle = "#2dd4bf"; ctx.lineWidth = 2; ctx.setLineDash([6, 5]);
-      const w = Math.max(...lines.map(l => ctx.measureText(l).width)) + px * .6;
-      const h = lines.length * px * 1.2 + px * .4;
-      ctx.strokeRect(x - w / 2, y - h / 2, w, h);
-      ctx.setLineDash([]);
-    }
   }
+
+  if (o === state.selOv) {
+    ctx.strokeStyle = "#2dd4bf"; ctx.lineWidth = 2 / st.sc; ctx.setLineDash([6, 5]);
+    const bw = o.kind === "sticker" ? px * 1.3 : Math.max(...o.content.split("\n").map(l => ctx.measureText(l).width), px) + px * .6;
+    const bh = o.kind === "sticker" ? px * 1.3 : o.content.split("\n").length * px * 1.2 + px * .4;
+    ctx.strokeRect(-bw / 2, -bh / 2, bw, bh);
+    ctx.setLineDash([]);
+  }
+  ctx.restore();
 }
+
 function roundRect(x, y, w, h, r) {
   ctx.beginPath();
   ctx.moveTo(x + r, y);
@@ -581,6 +1040,28 @@ function roundRect(x, y, w, h, r) {
   ctx.arcTo(x, y + h, x, y, r);
   ctx.arcTo(x, y, x + w, y, r);
   ctx.fill();
+}
+
+function drawFrame() {
+  const W = canvas.width, H = canvas.height;
+  ctx.filter = "none";
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, W, H);
+  const loc = locate(state.t);
+  if (loc) {
+    const c = loc.clip;
+    const idx = state.clips.indexOf(c);
+    const into = state.t - clipStart(c);
+    drawClipImage(c, effectTransform(c, into));
+    /* önceki klipten geçiş: sınırdan sonra tr.dur boyunca */
+    const prev = idx > 0 ? state.clips[idx - 1] : null;
+    if (prev && prev.trans && prev.trans.type !== "none" && into < prev.trans.dur) {
+      drawTransition(prev, prev.trans.type, clamp(into / prev.trans.dur, 0, 1));
+    }
+    drawEffectOverlay(c);
+  }
+  for (const o of state.overlays) drawOverlayItem(o);
 }
 
 /* ---------- oynatma motoru ---------- */
@@ -610,7 +1091,7 @@ function syncMedia() {
     const v = c.el;
     if (loc && c === loc.clip && state.playing) {
       const target = c.in + loc.offset * c.speed;
-      v.playbackRate = Math.min(Math.max(c.speed, .25), 4);
+      v.playbackRate = clamp(c.speed, .25, 4);
       v.volume = c.volume;
       v.muted = c.volume === 0;
       if (Math.abs(v.currentTime - target) > .25) v.currentTime = target;
@@ -642,10 +1123,18 @@ function pause() {
 }
 $("#btnPlay").onclick = () => state.playing ? pause() : play();
 $("#previewBox").addEventListener("click", e => {
-  if (textDrag.moved) return;
-  const hit = pickText(e);
-  if (hit) { state.selText = hit; renderTimeline(); return; }
-  if (state.selText) { state.selText = null; renderTimeline(); return; }
+  if (ovDrag.moved) return;
+  const hit = pickOverlay(e);
+  if (hit) {
+    if (state.selOv === hit) {
+      hit.kind === "text" ? openTextSheet(hit) : openStickerEditSheet(hit);
+    } else {
+      state.selOv = hit;
+      renderTimeline();
+    }
+    return;
+  }
+  if (state.selOv) { state.selOv = null; renderTimeline(); return; }
   state.playing ? pause() : play();
   const ov = $("#playOverlay");
   ov.classList.add("show");
@@ -654,7 +1143,7 @@ $("#previewBox").addEventListener("click", e => {
 });
 
 function seekTo(t, force) {
-  state.t = Math.min(Math.max(t, 0), totalDur());
+  state.t = clamp(t, 0, totalDur());
   const loc = locate(state.t);
   if (loc && loc.clip.type === "video") {
     const target = loc.clip.in + loc.offset * loc.clip.speed;
@@ -663,7 +1152,24 @@ function seekTo(t, force) {
       try { v.currentTime = target; } catch (_) {}
     }
   }
+  prepTransitionFrame();
   scrollToTime(true);
+}
+
+/* Geçiş penceresi içindeysek önceki klibin karesini son konumuna sar
+   (kaydırarak gelindiğinde doğru kare görünsün) */
+function prepTransitionFrame() {
+  const loc = locate(state.t);
+  if (!loc) return;
+  const idx = state.clips.indexOf(loc.clip);
+  const prev = idx > 0 ? state.clips[idx - 1] : null;
+  if (!prev || !prev.trans || prev.trans.type === "none") return;
+  const into = state.t - clipStart(loc.clip);
+  if (into >= prev.trans.dur || prev.type !== "video") return;
+  const end = Math.max(prev.out - .05, prev.in);
+  if (Math.abs(prev.el.currentTime - end) > .2) {
+    try { prev.el.currentTime = end; } catch (_) {}
+  }
 }
 
 /* ---------- zaman çizelgesi ---------- */
@@ -682,7 +1188,7 @@ tlScroll.addEventListener("touchstart", () => { if (state.playing) pause(); }, {
 tlScroll.addEventListener("wheel", () => { if (state.playing) pause(); }, { passive: true });
 tlScroll.addEventListener("scroll", () => {
   if (ignoreScroll || state.playing) return;
-  state.t = Math.min(Math.max(tlScroll.scrollLeft / state.pps, 0), totalDur());
+  state.t = clamp(tlScroll.scrollLeft / state.pps, 0, totalDur());
   const loc = locate(state.t);
   if (loc && loc.clip.type === "video") {
     const v = loc.clip.el;
@@ -691,6 +1197,7 @@ tlScroll.addEventListener("scroll", () => {
       try { v.currentTime = target; } catch (_) {}
     }
   }
+  prepTransitionFrame();
 });
 
 function renderTimeline() {
@@ -714,31 +1221,40 @@ function renderTimeline() {
     ruler.appendChild(el);
   }
 
-  // metin şeridi
+  // bindirme şeridi (metin + obje)
   const tt = $("#textTrack");
   tt.innerHTML = "";
   tt.style.width = total * state.pps + "px";
-  for (const tx of state.texts) {
+  for (const o of state.overlays) {
     const b = document.createElement("div");
-    b.className = "textBar" + (tx === state.selText ? " sel" : "");
-    b.style.left = tx.start * state.pps + "px";
-    b.style.width = Math.max(tx.dur * state.pps, 14) + "px";
-    b.textContent = tx.content.replace(/\n/g, " ");
-    b.onclick = ev => { ev.stopPropagation(); state.selText = tx; state.selClip = null; renderTimeline(); openTextSheet(tx); };
+    b.className = "textBar" + (o.kind === "sticker" ? " stk" : "") + (o === state.selOv ? " sel" : "");
+    b.style.left = o.start * state.pps + "px";
+    b.style.width = Math.max(o.dur * state.pps, 14) + "px";
+    b.textContent = o.content.replace(/\n/g, " ");
+    b.onclick = ev => {
+      ev.stopPropagation();
+      state.selOv = o; state.selClip = null;
+      renderTimeline();
+      o.kind === "text" ? openTextSheet(o) : openStickerEditSheet(o);
+    };
     tt.appendChild(b);
   }
 
   // klip şeridi
   const track = $("#clipTrack");
   track.innerHTML = "";
-  for (const c of state.clips) {
+  let accW = 0;
+  state.clips.forEach((c, i) => {
     const d = document.createElement("div");
     d.className = "clip" + (c === state.selClip ? " sel" : "");
-    d.style.width = Math.max(clipDur(c) * state.pps, 24) + "px";
+    const w = Math.max(clipDur(c) * state.pps, 24);
+    d.style.width = w + "px";
     if (c.thumb) d.style.backgroundImage = `url(${c.thumb})`;
     const badge = document.createElement("span");
     badge.className = "badge";
-    badge.textContent = (c.speed !== 1 ? c.speed + "x · " : "") + clipDur(c).toFixed(1) + "s";
+    badge.textContent =
+      (c.effect !== "none" ? "✨ " : "") +
+      (c.speed !== 1 ? c.speed + "x · " : "") + clipDur(c).toFixed(1) + "s";
     d.appendChild(badge);
 
     const hl = document.createElement("div"); hl.className = "handle l";
@@ -747,13 +1263,25 @@ function renderTimeline() {
     bindTrim(hl, c, "l"); bindTrim(hr, c, "r");
 
     d.addEventListener("click", ev => {
-      if (ev.target.classList.contains("handle")) return;
+      if (ev.target.classList.contains("handle") || ev.target.classList.contains("transBtn")) return;
       state.selClip = (state.selClip === c) ? null : c;
-      state.selText = null;
+      state.selOv = null;
       renderTimeline();
     });
     track.appendChild(d);
-  }
+    accW += w;
+
+    // klip sınırındaki geçiş düğmesi
+    if (i < state.clips.length - 1) {
+      const on = c.trans && c.trans.type !== "none";
+      const tb = document.createElement("button");
+      tb.className = "transBtn" + (on ? " on" : "");
+      tb.style.left = accW + "px";
+      tb.textContent = on ? "⇄" : "|";
+      tb.onclick = ev => { ev.stopPropagation(); openTransSheet(c); };
+      track.appendChild(tb);
+    }
+  });
   const add = document.createElement("button");
   add.id = "addClipBtn"; add.textContent = "+";
   add.onclick = () => $("#fileVideo").click();
@@ -768,7 +1296,7 @@ function renderTimeline() {
     mb.textContent = "🎵 " + state.music.name;
   } else mb.style.display = "none";
 
-  $("#btnUndoDel").disabled = !state.selClip && !state.clips.length;
+  $("#btnUndoDel").disabled = !state.clips.length;
   document.querySelectorAll(".tool.needsel").forEach(b =>
     b.classList.toggle("disabled", !state.clips.length));
 }
@@ -785,10 +1313,10 @@ function bindTrim(handle, clip, side) {
     const move = ev => {
       const dxSec = (ev.clientX - startX) / state.pps * clip.speed;
       if (side === "l") {
-        clip.in = Math.min(Math.max(orig.in + dxSec, 0), clip.out - .15);
+        clip.in = clamp(orig.in + dxSec, 0, clip.out - .15);
       } else {
         const maxOut = clip.type === "image" ? 30 : clip.natDur;
-        clip.out = Math.min(Math.max(orig.out + dxSec, clip.in + .15), maxOut);
+        clip.out = clamp(orig.out + dxSec, clip.in + .15, maxOut);
       }
       renderTimeline();
       seekTo(Math.min(state.t, totalDur()));
@@ -831,12 +1359,15 @@ function handleTool(tool) {
   switch (tool) {
     case "add": $("#fileVideo").click(); break;
     case "split": splitAtPlayhead(); break;
+    case "transition": openTransSheetNearPlayhead(); break;
+    case "effect": openEffectSheet(); break;
     case "duplicate": duplicateClip(); break;
     case "speed": openSpeedSheet(); break;
     case "volume": openVolumeSheet(); break;
     case "filter": openFilterSheet(); break;
     case "adjust": openAdjustSheet(); break;
-    case "text": openTextSheet(state.selText); break;
+    case "text": openTextSheet(state.selOv && state.selOv.kind === "text" ? state.selOv : null); break;
+    case "sticker": openStickerSheet(); break;
     case "music": openMusicSheet(); break;
     case "aspect": openAspectSheet(); break;
   }
@@ -848,12 +1379,13 @@ function splitAtPlayhead() {
   const c = loc.clip;
   const srcT = c.in + loc.offset * c.speed;
   if (srcT - c.in < .15 || c.out - srcT < .15) { toast("Bölmek için oynatma çubuğunu klibin ortasına getir"); return; }
-  const right = { ...c, id: idSeq++, adjust: { ...c.adjust }, in: srcT };
+  const right = { ...c, id: idSeq++, adjust: { ...c.adjust }, trans: { ...c.trans }, in: srcT };
   c.out = srcT;
+  c.trans = { type: "none", dur: .6 };  // yeni sınır geçişsiz başlar
   state.clips.splice(state.clips.indexOf(c) + 1, 0, right);
   state.selClip = c;
   renderAll();
-  toast("Klip bölündü");
+  toast("Klip bölündü — aradaki | düğmesiyle geçiş ekleyebilirsin");
 }
 
 function duplicateClip() {
@@ -865,7 +1397,7 @@ function duplicateClip() {
     el.src = c.url; el.preload = "auto";
     el.playsInline = true; el.setAttribute("playsinline", "");
   }
-  const copy = { ...c, id: idSeq++, el, adjust: { ...c.adjust } };
+  const copy = { ...c, id: idSeq++, el, adjust: { ...c.adjust }, trans: { ...c.trans } };
   state.clips.splice(state.clips.indexOf(c) + 1, 0, copy);
   renderAll();
   toast("Klip kopyalandı");
@@ -891,6 +1423,89 @@ function sliderRow(body, label, min, max, step, val, fmtFn, onInput) {
   inp.oninput = () => { const v = parseFloat(inp.value); out.textContent = fmtFn(v); onInput(v); };
   body.appendChild(row);
   return inp;
+}
+
+function chipRow(body, options, current, onPick, filterFn) {
+  const chips = document.createElement("div");
+  chips.className = "chips";
+  for (const [key, label] of Object.entries(options)) {
+    if (filterFn && !filterFn(key)) continue;
+    const b = document.createElement("button");
+    b.className = "chip" + (current === key ? " sel" : "");
+    b.textContent = label;
+    b.onclick = () => {
+      chips.querySelectorAll(".chip").forEach(x => x.classList.remove("sel"));
+      b.classList.add("sel");
+      onPick(key);
+    };
+    chips.appendChild(b);
+  }
+  body.appendChild(chips);
+  return chips;
+}
+
+function subhead(body, text) {
+  const h = document.createElement("div");
+  h.className = "subhead";
+  h.textContent = text;
+  body.appendChild(h);
+}
+
+/* ---------- Geçiş ---------- */
+function openTransSheetNearPlayhead() {
+  if (state.clips.length < 2) { toast("Geçiş için en az iki klip gerekli"); return; }
+  /* seçili klip varsa onun sonrasındaki sınır; yoksa oynatma çubuğuna en yakın sınır */
+  let left = null;
+  if (state.selClip && state.clips.indexOf(state.selClip) < state.clips.length - 1) {
+    left = state.selClip;
+  } else {
+    let acc = 0, best = Infinity;
+    for (let i = 0; i < state.clips.length - 1; i++) {
+      acc += clipDur(state.clips[i]);
+      const d = Math.abs(acc - state.t);
+      if (d < best) { best = d; left = state.clips[i]; }
+    }
+  }
+  if (left) openTransSheet(left);
+}
+
+function openTransSheet(leftClip) {
+  openSheet("Geçiş", body => {
+    subhead(body, "Tür");
+    chipRow(body, TRANSITIONS, leftClip.trans.type, key => {
+      leftClip.trans.type = key;
+      renderTimeline();
+      /* önizleme: geçişin başına sar */
+      const b = clipStart(leftClip) + clipDur(leftClip);
+      seekTo(Math.max(b - .01, 0), true);
+      setTimeout(() => { seekTo(b + .01, true); play(); }, 60);
+    });
+    subhead(body, "Süre");
+    sliderRow(body, "Süre", .3, 1.5, .1, leftClip.trans.dur, v => v.toFixed(1) + "s", v => leftClip.trans.dur = v);
+  });
+}
+
+/* ---------- Efekt ---------- */
+function openEffectSheet() {
+  const c = targetClip(); if (!c) return;
+  openSheet("Efekt", body => {
+    const grid = document.createElement("div");
+    grid.className = "filterGrid";
+    for (const [key, f] of Object.entries(EFFECTS)) {
+      const it = document.createElement("button");
+      it.className = "fItem" + (c.effect === key ? " sel" : "");
+      it.innerHTML = `<span class="em">${f.icon}</span><span class="nm">${f.name}</span>`;
+      it.onclick = () => {
+        c.effect = key;
+        grid.querySelectorAll(".fItem").forEach(x => x.classList.remove("sel"));
+        it.classList.add("sel");
+        renderTimeline();
+        if (!state.playing) play();
+      };
+      grid.appendChild(it);
+    }
+    body.appendChild(grid);
+  });
 }
 
 /* ---------- Hız ---------- */
@@ -919,7 +1534,7 @@ function openSpeedSheet() {
 function openVolumeSheet() {
   const c = targetClip(); if (!c) return;
   openSheet("Klip Sesi", body => {
-    sliderRow(body, "Ses", 0, 2, .05, c.volume, v => Math.round(v * 100) + "%", v => c.volume = Math.min(v, 1) /* element volume 0-1 */);
+    sliderRow(body, "Ses", 0, 1, .05, c.volume, v => Math.round(v * 100) + "%", v => c.volume = v);
   });
 }
 
@@ -965,8 +1580,9 @@ function openAdjustSheet() {
 function openTextSheet(existing) {
   const isNew = !existing;
   const tx = existing || {
-    id: idSeq++, content: "Metin", start: state.t, dur: 3,
+    id: idSeq++, kind: "text", content: "Metin", start: state.t, dur: 3,
     x: .5, y: .5, size: .06, color: "#ffffff", bg: true,
+    animIn: "pop", loop: "none",
   };
   openSheet(isNew ? "Metin Ekle" : "Metni Düzenle", body => {
     const ta = document.createElement("textarea");
@@ -977,6 +1593,13 @@ function openTextSheet(existing) {
     sliderRow(body, "Boyut", .03, .16, .005, tx.size, v => Math.round(v * 100), v => { tx.size = v; drawFrame(); });
     sliderRow(body, "Süre", .5, 15, .5, tx.dur, v => v + "s", v => { tx.dur = v; renderTimeline(); });
 
+    subhead(body, "Giriş Animasyonu");
+    chipRow(body, ANIM_IN, tx.animIn, key => { tx.animIn = key; previewOverlay(tx); });
+
+    subhead(body, "Hareket (Döngü)");
+    chipRow(body, ANIM_LOOP, tx.loop, key => { tx.loop = key; previewOverlay(tx); });
+
+    subhead(body, "Renk");
     const cr = document.createElement("div");
     cr.className = "colorRow";
     TEXT_COLORS.forEach(col => {
@@ -1000,70 +1623,132 @@ function openTextSheet(existing) {
     bgBtn.onclick = () => { tx.bg = !tx.bg; bgBtn.textContent = bgLabel(); drawFrame(); };
     body.appendChild(bgBtn);
 
-    if (isNew) {
-      const addBtn = document.createElement("button");
-      addBtn.className = "sheetBtn primary";
-      addBtn.textContent = "Metni Ekle";
-      addBtn.onclick = () => {
-        state.texts.push(tx);
-        state.selText = tx;
-        sheet.classList.remove("open");
-        renderTimeline(); drawFrame();
-        toast("Metin eklendi — sürükleyerek taşıyabilirsin");
-      };
-      body.appendChild(addBtn);
-    } else {
-      const del = document.createElement("button");
-      del.className = "sheetBtn danger";
-      del.textContent = "Metni Sil";
-      del.onclick = () => {
-        state.texts = state.texts.filter(t => t !== tx);
-        if (state.selText === tx) state.selText = null;
-        sheet.classList.remove("open");
-        renderTimeline(); drawFrame();
-      };
-      body.appendChild(del);
-    }
+    commonOverlayButtons(body, tx, isNew, "Metni Ekle", "Metni Sil");
   });
-  if (isNew) state.selText = null;
+  if (isNew) state.selOv = null;
   drawFrame();
 }
 
-/* metin seçme / sürükleme (önizleme üzerinde) */
-const textDrag = { active: null, moved: false };
+/* ---------- Obje (çıkartma) ---------- */
+function openStickerSheet() {
+  openSheet("Obje Ekle", body => {
+    const grid = document.createElement("div");
+    grid.className = "emojiGrid";
+    EMOJIS.forEach(em => {
+      const b = document.createElement("button");
+      b.textContent = em;
+      b.onclick = () => {
+        const st = {
+          id: idSeq++, kind: "sticker", content: em, start: state.t,
+          dur: 3, x: .5, y: .4, size: .1, color: "#fff", bg: false,
+          animIn: "pop", loop: "float",
+        };
+        state.overlays.push(st);
+        state.selOv = st;
+        renderTimeline(); drawFrame();
+        openStickerEditSheet(st);
+        toast("Obje eklendi — sürükleyerek taşıyabilirsin");
+      };
+      grid.appendChild(b);
+    });
+    body.appendChild(grid);
+  });
+}
+
+function openStickerEditSheet(st) {
+  openSheet("Objeyi Düzenle  " + st.content, body => {
+    sliderRow(body, "Boyut", .04, .3, .01, st.size, v => Math.round(v * 100), v => { st.size = v; drawFrame(); });
+    sliderRow(body, "Süre", .5, 15, .5, st.dur, v => v + "s", v => { st.dur = v; renderTimeline(); });
+
+    subhead(body, "Giriş Animasyonu");
+    chipRow(body, ANIM_IN, st.animIn, key => { st.animIn = key; previewOverlay(st); },
+      k => !TEXT_ONLY_ANIMS.includes(k));
+
+    subhead(body, "Hareket (Döngü)");
+    chipRow(body, ANIM_LOOP, st.loop, key => { st.loop = key; previewOverlay(st); },
+      k => !TEXT_ONLY_ANIMS.includes(k));
+
+    commonOverlayButtons(body, st, false, "", "Objeyi Sil");
+  });
+}
+
+/* metin & obje panellerinin ortak alt düğmeleri */
+function commonOverlayButtons(body, o, isNew, addLabel, delLabel) {
+  const startBtn = document.createElement("button");
+  startBtn.className = "sheetBtn";
+  startBtn.textContent = "⏱ Başlangıcı oynatma çubuğuna al";
+  startBtn.onclick = () => { o.start = state.t; renderTimeline(); drawFrame(); toast("Başlangıç güncellendi"); };
+  body.appendChild(startBtn);
+
+  if (isNew) {
+    const addBtn = document.createElement("button");
+    addBtn.className = "sheetBtn primary";
+    addBtn.textContent = addLabel;
+    addBtn.onclick = () => {
+      state.overlays.push(o);
+      state.selOv = o;
+      sheet.classList.remove("open");
+      renderTimeline(); drawFrame();
+      previewOverlay(o);
+      toast("Eklendi — sürükleyerek taşıyabilirsin");
+    };
+    body.appendChild(addBtn);
+  } else {
+    const del = document.createElement("button");
+    del.className = "sheetBtn danger";
+    del.textContent = delLabel;
+    del.onclick = () => {
+      state.overlays = state.overlays.filter(x => x !== o);
+      if (state.selOv === o) state.selOv = null;
+      sheet.classList.remove("open");
+      renderTimeline(); drawFrame();
+    };
+    body.appendChild(del);
+  }
+}
+
+/* animasyonu görmek için bindirmenin başına sar ve oynat */
+function previewOverlay(o) {
+  seekTo(Math.max(o.start - .05, 0), true);
+  if (!state.playing) play();
+}
+
+/* bindirme seçme / sürükleme (önizleme üzerinde) */
+const ovDrag = { active: null, moved: false };
 function canvasPoint(e) {
   const r = canvas.getBoundingClientRect();
   return { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height };
 }
-function pickText(e) {
+function pickOverlay(e) {
   const p = canvasPoint(e);
-  for (let i = state.texts.length - 1; i >= 0; i--) {
-    const tx = state.texts[i];
-    if (state.t < tx.start || state.t > tx.start + tx.dur) continue;
-    const h = tx.size * 1.6, w = Math.max(tx.content.length * tx.size * .35, .1);
-    if (Math.abs(p.x - tx.x) < w / 2 + .03 && Math.abs(p.y - tx.y) < h / 2 + .03) return tx;
+  for (let i = state.overlays.length - 1; i >= 0; i--) {
+    const o = state.overlays[i];
+    if (state.t < o.start || state.t > o.start + o.dur) continue;
+    const h = o.size * 1.6;
+    const w = o.kind === "sticker" ? o.size * 1.4 : Math.max(o.content.length * o.size * .35, .1);
+    if (Math.abs(p.x - o.x) < w / 2 + .03 && Math.abs(p.y - o.y) < h / 2 + .03) return o;
   }
   return null;
 }
 canvas.addEventListener("pointerdown", e => {
-  const hit = pickText(e);
-  textDrag.moved = false;
+  const hit = pickOverlay(e);
+  ovDrag.moved = false;
   if (hit) {
-    textDrag.active = hit;
-    state.selText = hit;
+    ovDrag.active = hit;
+    state.selOv = hit;
     canvas.setPointerCapture(e.pointerId);
     drawFrame();
   }
 });
 canvas.addEventListener("pointermove", e => {
-  if (!textDrag.active) return;
+  if (!ovDrag.active) return;
   const p = canvasPoint(e);
-  textDrag.active.x = Math.min(Math.max(p.x, .03), .97);
-  textDrag.active.y = Math.min(Math.max(p.y, .03), .97);
-  textDrag.moved = true;
+  ovDrag.active.x = clamp(p.x, .03, .97);
+  ovDrag.active.y = clamp(p.y, .03, .97);
+  ovDrag.moved = true;
   drawFrame();
 });
-canvas.addEventListener("pointerup", () => { textDrag.active = null; });
+canvas.addEventListener("pointerup", () => { ovDrag.active = null; });
 
 /* ---------- Müzik ---------- */
 function openMusicSheet() {
@@ -1102,9 +1787,11 @@ $("#fileMusic").onchange = e => {
   e.target.value = "";
   if (!f) return;
   const url = URL.createObjectURL(f);
+  const mediaId = uid();
+  idbPut("media", { id: mediaId, blob: f, name: f.name, type: f.type }).catch(() => {});
   const a = new Audio(url);
   a.preload = "auto";
-  state.music = { url, name: f.name, el: a, volume: .8 };
+  state.music = { url, name: f.name, el: a, volume: .8, mediaId };
   sheet.classList.remove("open");
   renderTimeline();
   toast("Müzik eklendi");
@@ -1133,6 +1820,7 @@ function openAspectSheet() {
 function applyAspect() {
   const [w, h] = ASPECTS[state.aspect];
   canvas.width = w; canvas.height = h;
+  noisePat = null;   // desen ölçeği canvas'a bağlı; yeniden üret
   fitPreview();
   drawFrame();
 }
@@ -1211,6 +1899,7 @@ async function startExport() {
   $("#modalDesc").textContent = "Video gerçek zamanlı işleniyor, sekmeyi kapatma.";
   $("#dlLink").style.display = "none";
   $("#modalCancel").style.display = "block";
+  $("#modalCancel").textContent = "İptal";
   $("#progressInner").style.width = "0%";
   modal.classList.add("open");
 
@@ -1250,9 +1939,198 @@ async function startExport() {
   $("#progressInner").style.width = "100%";
 }
 
+/* ---------- proje kaydet / yükle ---------- */
+function projectData() {
+  return {
+    aspect: state.aspect,
+    clips: state.clips.map(c => ({
+      mediaId: c.mediaId, type: c.type, name: c.name, natDur: c.natDur,
+      in: c.in, out: c.out, speed: c.speed, volume: c.volume,
+      filter: c.filter, adjust: { ...c.adjust }, effect: c.effect, trans: { ...c.trans },
+    })),
+    overlays: state.overlays.map(o => ({ ...o })),
+    music: state.music ? { mediaId: state.music.mediaId, name: state.music.name, volume: state.music.volume } : null,
+  };
+}
+
+async function saveProject() {
+  if (!state.projectId) return;
+  if (!state.clips.length && !state.overlays.length) return;
+  const data = projectData();
+  const s = JSON.stringify(data);
+  if (s === lastSavedJson) return;
+  lastSavedJson = s;
+  await idbPut("projects", {
+    id: state.projectId,
+    name: state.projectName,
+    updatedAt: Date.now(),
+    dur: totalDur(),
+    thumb: state.clips.find(c => c.thumb)?.thumb || null,
+    data,
+  }).catch(() => {});
+}
+/* otomatik kayıt: editördeyken her 2.5 sn'de değişiklik varsa yaz */
+setInterval(() => { if ($("#home").style.display === "none") saveProject(); }, 2500);
+window.addEventListener("pagehide", () => saveProject());
+document.addEventListener("visibilitychange", () => { if (document.hidden) saveProject(); });
+
+function resetEditorState() {
+  pause();
+  state.clips = [];
+  state.overlays = [];
+  state.music = null;
+  state.t = 0;
+  state.selClip = null;
+  state.selOv = null;
+  lastSavedJson = "";
+  $("#emptyState").style.display = "flex";
+  $("#btnExport").disabled = true;
+}
+
+async function newProject(tool) {
+  resetEditorState();
+  state.projectId = "p" + Date.now();
+  const all = await idbAll("projects").catch(() => []);
+  state.projectName = "Proje " + (all.length + 1);
+  state.aspect = "9:16";
+  pendingTool = tool || null;
+  enterEditor();
+  $("#fileVideo").click();
+}
+
+async function openProject(rec) {
+  resetEditorState();
+  state.projectId = rec.id;
+  state.projectName = rec.name;
+  state.aspect = rec.data.aspect || "9:16";
+  toast("Proje açılıyor…");
+  for (const cd of rec.data.clips) {
+    const m = await idbGet("media", cd.mediaId).catch(() => null);
+    if (!m) continue;
+    const url = URL.createObjectURL(m.blob);
+    let el;
+    if (cd.type === "image") {
+      el = new Image();
+      await new Promise(r => { el.onload = r; el.onerror = r; el.src = url; });
+    } else {
+      el = document.createElement("video");
+      el.preload = "auto";
+      el.playsInline = true; el.setAttribute("playsinline", "");
+      el.src = url;
+      await new Promise(r => { el.onloadedmetadata = r; el.onerror = r; });
+    }
+    const c = { ...mkClip(cd.type, url, cd.name, el, cd.natDur), ...cd, el, url, thumb: null };
+    c.id = idSeq++;
+    c.adjust = { ...cd.adjust };
+    c.trans = { ...cd.trans };
+    if (cd.type === "image") c.thumb = makeThumb(el, el.naturalWidth, el.naturalHeight);
+    else grabThumb(c);
+    state.clips.push(c);
+  }
+  state.overlays = (rec.data.overlays || []).map(o => ({ ...o, id: idSeq++ }));
+  if (rec.data.music) {
+    const m = await idbGet("media", rec.data.music.mediaId).catch(() => null);
+    if (m) {
+      const url = URL.createObjectURL(m.blob);
+      const a = new Audio(url);
+      a.preload = "auto";
+      state.music = { url, name: rec.data.music.name, el: a, volume: rec.data.music.volume, mediaId: rec.data.music.mediaId };
+    }
+  }
+  lastSavedJson = JSON.stringify(projectData());
+  if (state.clips.length) {
+    $("#emptyState").style.display = "none";
+    $("#btnExport").disabled = false;
+  }
+  enterEditor();
+  seekTo(0, true);
+}
+
+async function deleteProject(rec) {
+  if (!confirm(`"${rec.name}" silinsin mi?`)) return;
+  await idbDel("projects", rec.id).catch(() => {});
+  /* başka projede kullanılmayan medyaları temizle */
+  const remaining = await idbAll("projects").catch(() => []);
+  const used = new Set();
+  for (const p of remaining) {
+    (p.data.clips || []).forEach(c => used.add(c.mediaId));
+    if (p.data.music) used.add(p.data.music.mediaId);
+  }
+  const ids = new Set();
+  (rec.data.clips || []).forEach(c => ids.add(c.mediaId));
+  if (rec.data.music) ids.add(rec.data.music.mediaId);
+  for (const id of ids) if (!used.has(id)) await idbDel("media", id).catch(() => {});
+  renderProjectList();
+}
+
+function renameProject(rec) {
+  const name = prompt("Proje adı:", rec.name);
+  if (!name) return;
+  rec.name = name.trim() || rec.name;
+  idbPut("projects", rec).then(renderProjectList).catch(() => {});
+  if (state.projectId === rec.id) state.projectName = rec.name;
+}
+
+/* ---------- ana ekran ---------- */
+async function renderProjectList() {
+  const list = $("#projList");
+  const all = (await idbAll("projects").catch(() => []))
+    .sort((a, b) => b.updatedAt - a.updatedAt);
+  list.innerHTML = "";
+  if (!all.length) {
+    list.innerHTML = `<div id="projEmpty">Henüz proje yok.<br>Başlamak için “＋ Yeni proje”ye dokun.</div>`;
+    return;
+  }
+  for (const rec of all) {
+    const card = document.createElement("button");
+    card.className = "projCard";
+    const d = new Date(rec.updatedAt);
+    const dateStr = d.toLocaleDateString("tr-TR", { day: "2-digit", month: "2-digit" }) +
+      " " + d.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
+    card.innerHTML = `
+      <span class="pthumb"${rec.thumb ? ` style="background-image:url(${rec.thumb})"` : ""}></span>
+      <span class="pinfo">
+        <span class="pname">${rec.name.replace(/</g, "&lt;")}</span>
+        <span class="pmeta">${fmt(rec.dur || 0)} · ${dateStr}</span>
+      </span>
+      <span class="pbtn ren">✏️</span>
+      <span class="pbtn del">🗑</span>`;
+    card.querySelector(".ren").addEventListener("click", e => { e.stopPropagation(); renameProject(rec); });
+    card.querySelector(".del").addEventListener("click", e => { e.stopPropagation(); deleteProject(rec); });
+    card.addEventListener("click", () => openProject(rec));
+    list.appendChild(card);
+  }
+}
+
+function showHome() {
+  saveProject();
+  pause();
+  $("#home").style.display = "flex";
+  renderProjectList();
+}
+function enterEditor() {
+  $("#home").style.display = "none";
+  fitPreview();
+  renderAll();
+}
+
+$("#btnHome").onclick = showHome;
+$("#btnNewProject").onclick = () => newProject();
+$("#btnNewPhoto").onclick = () => newProject();
+document.querySelectorAll(".hTool").forEach(b => {
+  b.addEventListener("click", () => newProject(b.dataset.htool));
+});
+document.querySelectorAll("#homeNav button").forEach(b => {
+  b.addEventListener("click", () => {
+    if (b.dataset.nav === "projects") $("#projSection").scrollIntoView({ behavior: "smooth" });
+    else if (b.dataset.nav === "soon") toast("Yakında ✨");
+  });
+});
+
 /* ---------- başlangıç ---------- */
 applyAspect();
 renderAll();
+showHome();
 </script>
 </body>
 </html>
