@@ -14,7 +14,7 @@ Ayarlar → Pages → dalı seç → yayınla.
 - 🏠 **Ana ekran**: CapCut benzeri açılış menüsü, araç kısayolları ve proje listesi
 - 💾 **Otomatik kayıt**: Projeler medya dosyalarıyla birlikte IndexedDB'ye kaydedilir; sekmeyi kapatsan bile ana ekrandan geri açabilirsin (yeniden adlandır / sil dahil)
 - 📹 **Çoklu klip**: Video ve fotoğraf ekle, sırala
-- ✂️ **Kırp & Böl**: Klip uçlarını tutamaçlarla kırp, oynatma çubuğundan ikiye böl
+- ✂️ **Kırp & Böl**: Klibi seçince çıkan kenar tutamaçlarını sürükleyerek videoyu kes, fotoğrafın süresini uzat (kesilen uçtaki kare canlı önizlenir); oynatma çubuğundan ikiye böl
 - ⇄ **Geçişler**: Klipler arasında Solma, Siyah/Beyaz, Kaydırma, Silme, Yakınlaşma — süre ayarlı; zaman çizelgesindeki sınır düğmesinden eklenir
 - ✨ **Efektler (CapCut tarzı panel)**: Arama + kategori sekmeleri (Trend / Atmosfer / Retro / Hareket); Arızalı Sinyal, Konfeti, Parıltı, VHS, Kalpler, Kar, Yağmur, Vinyet, Film Greni, Negatif Renk, Kamera Hareketi, Nabız, Titrek Aksama
 - 🖼 **Bindirme (PiP)**: Video/fotoğrafı katman olarak üstüne ekle — sesi mikslenir, süresi ve konumu ayarlanır

@@ -175,12 +175,12 @@
     pointer-events:none;
   }
   .handle {
-    position:absolute; top:0; bottom:0; width:16px; z-index:3;
+    position:absolute; top:0; bottom:0; width:22px; z-index:3;
     display:none; touch-action:none;
   }
   .clip.sel .handle { display:block; }
   .handle::after {
-    content:""; position:absolute; top:0; bottom:0; width:12px;
+    content:""; position:absolute; top:0; bottom:0; width:14px;
     background:var(--accent); display:grid;
   }
   .handle.l { left:0; } .handle.l::after { left:0; border-radius:8px 0 0 8px; }
@@ -1576,28 +1576,48 @@ function bindMusicBar(bar, m) {
   });
 }
 
-/* kırpma tutamaçları */
+/* kırpma tutamaçları: fotoğrafta süre uzatma, videoda kesme.
+   Sürükleme sırasında DOM yeniden KURULMAZ (tutamaç yok olup sürükleme
+   kopar); yalnızca bu klibin genişliği ve rozeti güncellenir, kesilen
+   uçtaki kare canlı önizlenir. */
 function bindTrim(handle, clip, side) {
   handle.addEventListener("pointerdown", e => {
     e.preventDefault(); e.stopPropagation();
     try { handle.setPointerCapture(e.pointerId); } catch (_) {}
     const startX = e.clientX;
     const orig = { in: clip.in, out: clip.out };
+    const clipEl = handle.parentElement;
+    const badge = clipEl.querySelector(".badge");
+    if (state.playing) pause();
     const move = ev => {
       const dxSec = (ev.clientX - startX) / state.pps * clip.speed;
       if (side === "l") {
         clip.in = clamp(orig.in + dxSec, 0, clip.out - .15);
       } else {
-        const maxOut = clip.type === "image" ? 30 : clip.natDur;
+        const maxOut = clip.type === "image" ? 600 : clip.natDur;
         clip.out = clamp(orig.out + dxSec, clip.in + .15, maxOut);
       }
-      scheduleTimeline();   // sürükleme sırasında kare başına tek DOM güncellemesi
-      seekTo(Math.min(state.t, totalDur()));
+      clipEl.style.width = Math.max(clipDur(clip) * state.pps, 24) + "px";
+      if (badge) {
+        badge.textContent =
+          (clip.effect !== "none" ? "✨ " : "") +
+          (clip.speed !== 1 ? clip.speed + "x · " : "") + clipDur(clip).toFixed(1) + "s";
+      }
+      /* kesilen uçtaki kareyi canlı göster (kaydırma yapmadan) */
+      state.t = clamp(clipStart(clip) + (side === "l" ? .01 : clipDur(clip) - .01), 0, totalDur());
+      if (clip.type === "video") {
+        const target = side === "l" ? clip.in : Math.max(clip.out - .05, clip.in);
+        if (Math.abs(clip.el.currentTime - target) > .05) {
+          try { clip.el.currentTime = target; } catch (_) {}
+        }
+      }
+      invalidate();
     };
     const up = () => {
       handle.removeEventListener("pointermove", move);
       handle.removeEventListener("pointerup", up);
       renderAll();
+      seekTo(Math.min(state.t, totalDur()), true);
     };
     handle.addEventListener("pointermove", move);
     handle.addEventListener("pointerup", up);
