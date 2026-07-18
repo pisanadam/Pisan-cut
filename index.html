@@ -59,7 +59,7 @@
     background:#000;
   }
   #previewBox { position:relative; max-width:100%; max-height:100%; }
-  #canvas { display:block; width:100%; height:100%; background:#000; border-radius:4px; }
+  #canvas { display:block; width:100%; height:100%; background:#000; border-radius:4px; outline:1px solid #3a3a48; }
   #emptyState {
     position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px;
     color:var(--dim); font-size:14px; text-align:center; padding:20px;
@@ -601,6 +601,8 @@ const state = {
   exportW: 720,
   exportH: 1280,
   rendering: false,
+  exporting: false,
+  leadGap: 0,   // ilk klip soldan kırpılınca başta kalan siyah boşluk (sn)
 };
 let idSeq = 1;
 /* çizim yalnızca gerektiğinde: oynatmıyorken kareyi tekrar tekrar boyama */
@@ -653,6 +655,7 @@ function snapState() {
     overlays: state.overlays.map(o => ({ ...o })),
     musics: state.musics.map(m => ({ ...m })),
     aspect: state.aspect, resolution: state.resolution, fps: state.fps,
+    leadGap: state.leadGap,
   };
 }
 function stateJson() { try { return JSON.stringify(projectData()); } catch (_) { return String(Math.random()); } }
@@ -672,6 +675,7 @@ function applySnap(s) {
   state.selClip = null; state.selOv = null;
   const aspectChanged = state.aspect !== s.aspect || state.resolution !== s.resolution;
   state.aspect = s.aspect; state.resolution = s.resolution; state.fps = s.fps;
+  state.leadGap = s.leadGap || 0;
   if (aspectChanged) applyAspect();
   $("#emptyState").style.display = state.clips.length ? "none" : "flex";
   $("#btnExport").disabled = !state.clips.length;
@@ -716,9 +720,10 @@ window.addEventListener("keydown", e => {
 /* ---------- yardımcılar ---------- */
 const clipDur = c => (c.out - c.in) / c.speed;
 const clipsDur = () => state.clips.reduce((a, c) => a + clipDur(c), 0);
+const contentEnd = () => state.leadGap + clipsDur();   // kliplerin bittiği mutlak an
 const musicDur = m => (m.out - m.in) / m.speed;
 /* proje süresi: müzik kliplerden uzunsa video son karede donarak müziğin sonuna kadar uzar */
-const totalDur = () => Math.max(clipsDur(), ...state.musics.map(m => m.start + musicDur(m)), 0);
+const totalDur = () => Math.max(contentEnd(), ...state.musics.map(m => m.start + musicDur(m)), 0);
 /* Seçili klip yoksa oynatma çubuğunun altındaki klibi hedefle */
 const targetClip = () => state.selClip || (locate(state.t) || {}).clip || null;
 const clamp = (v, a, b) => Math.min(Math.max(v, a), b);
@@ -735,12 +740,13 @@ function bounceOut(p) {
 }
 
 function clipStart(c) {
-  let t = 0;
+  let t = state.leadGap;
   for (const k of state.clips) { if (k === c) return t; t += clipDur(k); }
   return t;
 }
 function locate(t) {
-  let acc = 0;
+  if (t < state.leadGap - 1e-6) return null;   // baştaki siyah boşluk
+  let acc = state.leadGap;
   for (const c of state.clips) {
     const d = clipDur(c);
     if (t < acc + d || c === state.clips[state.clips.length - 1]) {
@@ -1244,9 +1250,12 @@ function drawFrame() {
   const W = canvas.width, H = canvas.height;
   ctx.filter = "none";
   ctx.globalAlpha = 1;
-  ctx.fillStyle = "#000";
-  ctx.fillRect(0, 0, W, H);
   const loc = locate(state.t);
+  /* önizlemede tuval/boşluklar gri (çerçeve görünsün); dışa aktarmada siyah.
+     Baştaki siyah boşluk (leadGap) önizlemede de siyah gösterilir. */
+  const exporting = state.rendering || state.exporting;
+  ctx.fillStyle = exporting ? "#000" : (loc ? "#23232d" : "#000");
+  ctx.fillRect(0, 0, W, H);
   if (loc) {
     const c = loc.clip;
     const idx = state.clips.indexOf(c);
@@ -1306,7 +1315,7 @@ requestAnimationFrame(t => { lastTick = t; tick(t); });
 function syncMedia() {
   const loc = locate(state.t);
   /* müzik videodan uzunsa: klipler bitti, son kare donuk kalır */
-  const beyondClips = state.t >= clipsDur() - .02;
+  const beyondClips = state.t >= contentEnd() - .02;
   for (const c of state.clips) {
     if (c.type !== "video") continue;
     const v = c.el;
@@ -1497,15 +1506,16 @@ function renderTimeline() {
     tt.appendChild(b);
   }
 
-  // klip şeridi
+  // klip şeridi (baştaki siyah boşluk kadar sağdan başlar)
   const track = $("#clipTrack");
   track.innerHTML = "";
-  let accW = 0;
+  let accW = state.leadGap * state.pps;
   state.clips.forEach((c, i) => {
     const d = document.createElement("div");
     d.className = "clip" + (c === state.selClip ? " sel" : "");
     const w = Math.max(clipDur(c) * state.pps, 24);
     d.style.width = w + "px";
+    if (i === 0 && state.leadGap > 0) d.style.marginLeft = state.leadGap * state.pps + "px";
     if (c.thumb) d.style.backgroundImage = `url(${c.thumb})`;
     const badge = document.createElement("span");
     badge.className = "badge";
@@ -1521,10 +1531,12 @@ function renderTimeline() {
 
     d.addEventListener("click", ev => {
       if (ev.target.classList.contains("handle") || ev.target.classList.contains("transBtn")) return;
+      if (d._reordered) { d._reordered = false; return; }
       state.selClip = (state.selClip === c) ? null : c;
       state.selOv = null;
       renderTimeline();
     });
+    bindClipReorder(d, c);
     track.appendChild(d);
     accW += w;
 
@@ -1622,6 +1634,67 @@ function bindOverlayBar(bar, o) {
   });
 }
 
+/* klibe basılı tut → zaman çizelgesinde sürükleyip sırasını değiştir */
+function bindClipReorder(d, c) {
+  let timer = null, active = false, startX = 0, startY = 0;
+  d.addEventListener("touchmove", ev => { if (active) ev.preventDefault(); }, { passive: false });
+  d.addEventListener("pointerdown", e => {
+    if (e.target.classList.contains("handle") || e.target.classList.contains("transBtn")) return;
+    if (state.clips.length < 2) return;
+    startX = e.clientX; startY = e.clientY;
+    timer = setTimeout(() => {
+      active = true;
+      pushHistory();
+      if (state.playing) pause();
+      try { d.setPointerCapture(e.pointerId); } catch (_) {}
+      d.style.zIndex = "10";
+      d.style.opacity = ".7";
+      d.style.outline = "2px solid #fff";
+      if (navigator.vibrate) navigator.vibrate(25);
+    }, 380);
+  });
+  d.addEventListener("pointermove", e => {
+    if (!active) {
+      /* parmak oynadıysa bu bir kaydırma; uzun basmayı iptal et */
+      if (timer && Math.hypot(e.clientX - startX, e.clientY - startY) > 8) { clearTimeout(timer); timer = null; }
+      return;
+    }
+    d.style.transform = `translateX(${e.clientX - startX}px) scale(1.05)`;
+  });
+  const finish = e => {
+    clearTimeout(timer); timer = null;
+    if (!active) return;
+    active = false;
+    d.style.zIndex = ""; d.style.opacity = ""; d.style.outline = ""; d.style.transform = "";
+    d._reordered = true;
+    /* bırakılan konuma göre yeni sıra: diğer kliplerin orta noktalarıyla karşılaştır */
+    const others = [...document.querySelectorAll("#clipTrack .clip")].filter(el => el !== d);
+    let idx = 0;
+    for (const el of others) {
+      const r = el.getBoundingClientRect();
+      if (e.clientX > r.left + r.width / 2) idx++;
+    }
+    const from = state.clips.indexOf(c);
+    if (idx !== from) {
+      state.clips.splice(from, 1);
+      state.clips.splice(idx, 0, c);
+      state.selClip = c;
+      toast("Sıra değiştirildi");
+    }
+    renderAll();
+    seekTo(Math.min(state.t, totalDur()), true);
+  };
+  d.addEventListener("pointerup", finish);
+  d.addEventListener("pointercancel", e => {
+    clearTimeout(timer); timer = null;
+    if (active) {
+      active = false;
+      d.style.zIndex = ""; d.style.opacity = ""; d.style.outline = ""; d.style.transform = "";
+      renderTimeline();
+    }
+  });
+}
+
 /* müzik çubuğu: ortadan taşı, uçlardan kırp; dokun = düzenleme paneli */
 function bindMusicBar(bar, m) {
   bar.addEventListener("pointerdown", e => {
@@ -1674,7 +1747,8 @@ function bindTrim(handle, clip, side) {
     try { handle.setPointerCapture(e.pointerId); } catch (_) {}
     pushHistory();
     const startX = e.clientX;
-    const orig = { in: clip.in, out: clip.out };
+    const orig = { in: clip.in, out: clip.out, gap: state.leadGap };
+    const isFirst = state.clips[0] === clip;
     const clipEl = handle.parentElement;
     const badge = clipEl.querySelector(".badge");
     if (state.playing) pause();
@@ -1682,6 +1756,12 @@ function bindTrim(handle, clip, side) {
       const dxSec = (ev.clientX - startX) / state.pps * clip.speed;
       if (side === "l") {
         clip.in = clamp(orig.in + dxSec, 0, clip.out - .15);
+        /* ilk klip soldan kırpılınca zaman kaymasın: kesilen süre kadar
+           başta siyah boşluk kalır (müzik/yazı senkronu bozulmaz) */
+        if (isFirst) {
+          state.leadGap = Math.max(0, orig.gap + (clip.in - orig.in) / clip.speed);
+          clipEl.style.marginLeft = state.leadGap * state.pps + "px";
+        }
       } else {
         const maxOut = clip.type === "image" ? 600 : clip.natDur;
         clip.out = clamp(orig.out + dxSec, clip.in + .15, maxOut);
@@ -2809,6 +2889,7 @@ function exportDone(blob, ext) {
 }
 function finishExportUI() {
   state.rendering = false;
+  state.exporting = false;
   setCanvasResolution(false);
   invalidate();
 }
@@ -3237,6 +3318,7 @@ async function realtimeExport() {
   if (!mime) { toast("Bu tarayıcı video kaydını desteklemiyor"); return; }
   const ext = mime.startsWith("video/mp4") ? "mp4" : "webm";
 
+  state.exporting = true;   // gerçek zamanlı kayıtta da arka plan siyah olsun
   setCanvasResolution(true);
   try {
     audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
@@ -3300,6 +3382,7 @@ function projectData() {
     aspect: state.aspect,
     resolution: state.resolution,
     fps: state.fps,
+    leadGap: state.leadGap,
     clips: state.clips.map(c => ({
       mediaId: c.mediaId, type: c.type, name: c.name, natDur: c.natDur,
       in: c.in, out: c.out, speed: c.speed, volume: c.volume,
@@ -3342,6 +3425,7 @@ function resetEditorState() {
   state.overlays = [];
   for (const m of state.musics) m.el.pause();
   state.musics = [];
+  state.leadGap = 0;
   state.t = 0;
   state.selClip = null;
   state.selOv = null;
@@ -3372,6 +3456,7 @@ async function openProject(rec) {
   state.aspect = rec.data.aspect || "9:16";
   state.resolution = rec.data.resolution || 720;
   state.fps = rec.data.fps || 30;
+  state.leadGap = rec.data.leadGap || 0;
   applyAspect();
   toast("Proje açılıyor…");
   for (const cd of rec.data.clips) {
