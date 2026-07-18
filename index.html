@@ -2727,6 +2727,21 @@ function openMusicSegSheet(m) {
     };
     body.appendChild(split);
 
+    const fitBtn = document.createElement("button");
+    fitBtn.className = "sheetBtn";
+    fitBtn.textContent = "🎬 Videonun sonunda kes (aynı anda bitsin)";
+    fitBtn.onclick = () => {
+      const end = contentEnd();   // kliplerin bittiği an
+      const newDurTl = end - m.start;
+      if (newDurTl < .3) { toast("Müzik videonun bitiminden sonra başlıyor"); return; }
+      if (m.start + musicDur(m) <= end + .01) { toast("Müzik zaten videoyla birlikte veya daha önce bitiyor"); return; }
+      m.out = Math.min(m.in + newDurTl * m.speed, m.natDur);
+      renderTimeline();
+      seekTo(Math.min(state.t, totalDur()), true);
+      toast("Müzik video sonunda kesildi ✂️");
+    };
+    body.appendChild(fitBtn);
+
     const toPh = document.createElement("button");
     toPh.className = "sheetBtn";
     toPh.textContent = "⏱ Başlangıcı oynatma çubuğuna al";
