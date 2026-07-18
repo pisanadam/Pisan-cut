@@ -159,6 +159,17 @@
   .fxTile.sel .nm { color:var(--text); }
   .halfRow { display:flex; gap:8px; }
   .halfRow .sheetBtn { flex:1; margin:8px 0 0; }
+  .libRow {
+    display:flex; align-items:center; gap:10px;
+    padding:8px 2px; border-bottom:1px solid var(--line);
+  }
+  .libRow .pbtn {
+    width:34px; height:34px; border-radius:9px; background:var(--bg3);
+    display:grid; place-items:center; font-size:14px; flex:0 0 auto;
+  }
+  .libRow .linfo { flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; }
+  .libRow .ltitle { font-size:12px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .libRow .lartist { font-size:10px; color:var(--dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 
   #clipTrack { height:56px; position:relative; display:flex; align-items:center; }
   .clip {
@@ -405,6 +416,8 @@
   <button id="btnPlay">▶</button>
   <span id="timeLabel">00:00.0 / 00:00.0</span>
   <span class="spacer"></span>
+  <button class="iconBtn" id="btnUndo" title="Geri al (Ctrl+Z)" disabled>↩</button>
+  <button class="iconBtn" id="btnRedo" title="Yinele (Ctrl+X)" disabled>↪</button>
   <button class="iconBtn" id="btnUndoDel" title="Klibi sil" disabled>🗑</button>
   <button class="iconBtn" id="btnZoomOut" title="Uzaklaş">−</button>
   <button class="iconBtn" id="btnZoomIn" title="Yakınlaş">+</button>
@@ -630,6 +643,76 @@ const idbDel = (store, key) => idb().then(d => new Promise((res, rej) => {
 }));
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : "m" + Date.now() + Math.random().toString(36).slice(2));
 
+/* ---------- Geri al / Yinele ----------
+   Anlık görüntüler medya elemanlarını (el/url/thumb) referansla paylaşır;
+   yalnızca alanlar kopyalanır. Her mutasyondan ÖNCE pushHistory çağrılır. */
+const hist = { undo: [], redo: [] };
+function snapState() {
+  return {
+    clips: state.clips.map(c => ({ ...c, adjust: { ...c.adjust }, trans: { ...c.trans } })),
+    overlays: state.overlays.map(o => ({ ...o })),
+    musics: state.musics.map(m => ({ ...m })),
+    aspect: state.aspect, resolution: state.resolution, fps: state.fps,
+  };
+}
+function stateJson() { try { return JSON.stringify(projectData()); } catch (_) { return String(Math.random()); } }
+function pushHistory() {
+  const json = stateJson();
+  if (hist.undo.length && hist.undo[hist.undo.length - 1].json === json) return;
+  hist.undo.push({ json, snap: snapState() });
+  if (hist.undo.length > 50) hist.undo.shift();
+  hist.redo.length = 0;
+  updateUndoBtns();
+}
+function applySnap(s) {
+  pause();
+  state.clips = s.clips.map(c => ({ ...c, adjust: { ...c.adjust }, trans: { ...c.trans } }));
+  state.overlays = s.overlays.map(o => ({ ...o }));
+  state.musics = s.musics.map(m => ({ ...m }));
+  state.selClip = null; state.selOv = null;
+  const aspectChanged = state.aspect !== s.aspect || state.resolution !== s.resolution;
+  state.aspect = s.aspect; state.resolution = s.resolution; state.fps = s.fps;
+  if (aspectChanged) applyAspect();
+  $("#emptyState").style.display = state.clips.length ? "none" : "flex";
+  $("#btnExport").disabled = !state.clips.length;
+  renderAll();
+  seekTo(Math.min(state.t, totalDur()), true);
+}
+function doUndo() {
+  if (!hist.undo.length) return;
+  const cur = { json: stateJson(), snap: snapState() };
+  let top = hist.undo.pop();
+  while (top && top.json === cur.json && hist.undo.length) top = hist.undo.pop();
+  if (!top || top.json === cur.json) { updateUndoBtns(); return; }
+  hist.redo.push(cur);
+  applySnap(top.snap);
+  updateUndoBtns();
+  toast("Geri alındı");
+}
+function doRedo() {
+  if (!hist.redo.length) return;
+  hist.undo.push({ json: stateJson(), snap: snapState() });
+  const nxt = hist.redo.pop();
+  applySnap(nxt.snap);
+  updateUndoBtns();
+  toast("Yinelendi");
+}
+function updateUndoBtns() {
+  $("#btnUndo").disabled = !hist.undo.length;
+  $("#btnRedo").disabled = !hist.redo.length;
+}
+function clearHistory() { hist.undo.length = 0; hist.redo.length = 0; updateUndoBtns(); }
+
+window.addEventListener("keydown", e => {
+  if (!(e.ctrlKey || e.metaKey)) return;
+  const tag = (e.target.tagName || "").toUpperCase();
+  if (tag === "INPUT" || tag === "TEXTAREA") return;   // metin alanlarında kes/yapıştır bozulmasın
+  const k = e.key.toLowerCase();
+  if (k === "z" && e.shiftKey) { e.preventDefault(); doRedo(); }
+  else if (k === "z") { e.preventDefault(); doUndo(); }
+  else if (k === "x" || k === "y") { e.preventDefault(); doRedo(); }
+});
+
 /* ---------- yardımcılar ---------- */
 const clipDur = c => (c.out - c.in) / c.speed;
 const clipsDur = () => state.clips.reduce((a, c) => a + clipDur(c), 0);
@@ -684,6 +767,7 @@ function toast(msg) {
 $("#btnEmptyAdd").onclick = () => $("#fileVideo").click();
 $("#fileVideo").onchange = async e => {
   const files = [...e.target.files];
+  if (files.length) pushHistory();
   e.target.value = "";
   for (const f of files) await addMedia(f);
   if (state.clips.length) {
@@ -1278,6 +1362,8 @@ function pause() {
   for (const m of state.musics) if (!m.el.paused) m.el.pause();
 }
 $("#btnPlay").onclick = () => state.playing ? pause() : play();
+$("#btnUndo").onclick = doUndo;
+$("#btnRedo").onclick = doRedo;
 
 function openOverlaySheet(o) {
   if (o.kind === "text") openTextSheet(o);
@@ -1492,6 +1578,7 @@ function bindOverlayBar(bar, o) {
   bar.addEventListener("pointerdown", e => {
     e.preventDefault(); e.stopPropagation();
     try { bar.setPointerCapture(e.pointerId); } catch (_) {}
+    pushHistory();
     const barW = bar.offsetWidth;
     const offX = e.clientX - bar.getBoundingClientRect().left;
     const edge = Math.min(16, barW / 3);
@@ -1540,6 +1627,7 @@ function bindMusicBar(bar, m) {
   bar.addEventListener("pointerdown", e => {
     e.preventDefault(); e.stopPropagation();
     try { bar.setPointerCapture(e.pointerId); } catch (_) {}
+    pushHistory();
     const barW = bar.offsetWidth;
     const offX = e.clientX - bar.getBoundingClientRect().left;
     const edge = Math.min(16, barW / 3);
@@ -1584,6 +1672,7 @@ function bindTrim(handle, clip, side) {
   handle.addEventListener("pointerdown", e => {
     e.preventDefault(); e.stopPropagation();
     try { handle.setPointerCapture(e.pointerId); } catch (_) {}
+    pushHistory();
     const startX = e.clientX;
     const orig = { in: clip.in, out: clip.out };
     const clipEl = handle.parentElement;
@@ -1632,6 +1721,7 @@ $("#btnZoomOut").onclick = () => { state.pps = Math.max(state.pps / 1.4, 16); re
 $("#btnUndoDel").onclick = () => {
   const c = targetClip();
   if (!c) return;
+  pushHistory();
   state.clips.splice(state.clips.indexOf(c), 1);
   state.selClip = null;
   if (!state.clips.length) {
@@ -1676,6 +1766,7 @@ function splitAtPlayhead() {
   const c = loc.clip;
   const srcT = c.in + loc.offset * c.speed;
   if (srcT - c.in < .15 || c.out - srcT < .15) { toast("Bölmek için oynatma çubuğunu klibin ortasına getir"); return; }
+  pushHistory();
   const right = { ...c, id: idSeq++, adjust: { ...c.adjust }, trans: { ...c.trans }, in: srcT };
   c.out = srcT;
   c.trans = { type: "none", dur: .6 };  // yeni sınır geçişsiz başlar
@@ -1688,6 +1779,7 @@ function splitAtPlayhead() {
 function duplicateClip() {
   const c = targetClip();
   if (!c) return;
+  pushHistory();
   let el = c.el;
   if (c.type === "video") {
     el = document.createElement("video");
@@ -1703,13 +1795,17 @@ function duplicateClip() {
 /* ---------- bottom sheet altyapısı ---------- */
 const sheet = $("#sheet");
 function openSheet(title, buildFn) {
+  if (state.projectId) pushHistory();
   $("#sheetTitle").textContent = title;
   const body = $("#sheetBody");
   body.innerHTML = "";
   buildFn(body);
   sheet.classList.add("open");
 }
-$("#sheetClose").onclick = () => sheet.classList.remove("open");
+$("#sheetClose").onclick = () => {
+  sheet.classList.remove("open");
+  if (typeof stopLibPreview === "function") stopLibPreview();
+};
 
 function sliderRow(body, label, min, max, step, val, fmtFn, onInput) {
   const row = document.createElement("div");
@@ -2037,6 +2133,7 @@ $("#filePip").onchange = async e => {
   const f = e.target.files[0];
   e.target.value = "";
   if (!f) return;
+  pushHistory();
   const url = URL.createObjectURL(f);
   const mediaId = uid();
   idbPut("media", { id: mediaId, blob: f, name: f.name, type: f.type }).catch(() => {});
@@ -2218,6 +2315,7 @@ canvas.addEventListener("pointerdown", e => {
       gesture.target = loc ? loc.clip : null;
       gesture.kind = gesture.target ? "clip" : null;
     }
+    if (gesture.target) pushHistory();
     const p = canvasPoint(e);
     gesture.startX = p.x; gesture.startY = p.y;
     gesture.orig = !gesture.target ? null
@@ -2289,19 +2387,197 @@ canvas.addEventListener("pointerup", gestureEnd);
 canvas.addEventListener("pointercancel", gestureEnd);
 
 /* ---------- Müzik (bölünebilir, kırpılabilir, hızlanabilir parçalar) ---------- */
+
+/* iTunes arama ucu CORS başlığı göndermiyor; JSONP ile çağrılır */
+let jsonpSeq = 0;
+function jsonp(url) {
+  return new Promise((res, rej) => {
+    const cb = "__pcJsonp" + (jsonpSeq++);
+    const s = document.createElement("script");
+    const cleanup = () => { delete window[cb]; s.remove(); };
+    window[cb] = data => { cleanup(); res(data); };
+    s.onerror = () => { cleanup(); rej(new Error("jsonp")); };
+    s.src = url + "&callback=" + cb;
+    document.head.appendChild(s);
+    setTimeout(() => { if (window[cb]) { cleanup(); rej(new Error("timeout")); } }, 15000);
+  });
+}
+
+/* çevrimiçi telifsiz müzik kütüphaneleri */
+const MUSIC_LIBS = {
+  device: { name: "📱 Cihazım" },
+  archive: {
+    name: "🏛 İnternet Arşivi",
+    async search(q) {
+      const u = "https://archive.org/advancedsearch.php?q=" + encodeURIComponent(q + " AND mediatype:audio AND format:MP3") +
+        "&fl[]=identifier&fl[]=title&fl[]=creator&rows=15&page=1&output=json";
+      const j = await (await fetch(u)).json();
+      return (j.response?.docs || []).map(d => ({
+        title: d.title || d.identifier,
+        artist: Array.isArray(d.creator) ? d.creator[0] : (d.creator || ""),
+        resolve: async () => {
+          const m = await (await fetch("https://archive.org/metadata/" + d.identifier)).json();
+          const f = (m.files || []).find(f => /\.mp3$/i.test(f.name));
+          return f ? "https://archive.org/download/" + d.identifier + "/" + encodeURIComponent(f.name) : null;
+        },
+      }));
+    },
+  },
+  openverse: {
+    name: "🌐 Openverse",
+    async search(q) {
+      const j = await (await fetch("https://api.openverse.org/v1/audio/?page_size=15&q=" + encodeURIComponent(q))).json();
+      return (j.results || []).map(x => ({
+        title: x.title || "İsimsiz",
+        artist: x.creator || "",
+        resolve: async () => x.url,
+      }));
+    },
+  },
+  itunes: {
+    name: "🍎 iTunes (30 sn)",
+    async search(q) {
+      const j = await jsonp("https://itunes.apple.com/search?media=music&limit=15&term=" + encodeURIComponent(q));
+      return (j.results || []).filter(x => x.previewUrl).map(x => ({
+        title: x.trackName || "İsimsiz",
+        artist: x.artistName || "",
+        resolve: async () => x.previewUrl,
+      }));
+    },
+  },
+};
+
+let libPreview = null;   // paylaşılan önizleme çalar
+function stopLibPreview() {
+  if (libPreview) { libPreview.pause(); libPreview = null; }
+}
+
+async function addMusicFromUrl(url, name) {
+  toast("İndiriliyor…");
+  const r = await fetch(url);
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  const blob = await r.blob();
+  pushHistory();
+  const mediaId = uid();
+  idbPut("media", { id: mediaId, blob, name, type: blob.type || "audio/mpeg" }).catch(() => {});
+  const objUrl = URL.createObjectURL(blob);
+  const a = new Audio(objUrl);
+  a.preload = "auto";
+  await new Promise(res => { a.onloadedmetadata = res; a.onerror = res; });
+  const natDur = await resolveDuration(a);
+  state.musics.push({
+    id: idSeq++, mediaId, name, url: objUrl, el: a,
+    natDur, start: state.t, in: 0, out: natDur, speed: 1, volume: .8,
+  });
+  renderTimeline();
+  toast("Müzik eklendi 🎵");
+}
+
 function openMusicSheet() {
+  let lib = "device";
   openSheet("Müzik", body => {
-    const add = document.createElement("button");
-    add.className = "sheetBtn primary";
-    add.textContent = "🎵 Müzik Dosyası Ekle";
-    add.onclick = () => $("#fileMusic").click();
-    body.appendChild(add);
-    const hint = document.createElement("p");
-    hint.style.cssText = "font-size:12px;color:var(--dim);text-align:center;margin-top:6px";
-    hint.textContent = state.musics.length
-      ? "Düzenlemek için şeritteki müzik çubuğuna dokun: böl, kes, hızlandır, sil."
-      : "MP3, M4A, WAV… cihazından bir ses dosyası ekle. Müzik oynatma çubuğunun olduğu yerden başlar.";
-    body.appendChild(hint);
+    const tabs = document.createElement("div");
+    tabs.className = "fxTabs";
+    body.appendChild(tabs);
+    const content = document.createElement("div");
+    body.appendChild(content);
+
+    const renderTabs = () => {
+      tabs.innerHTML = "";
+      for (const [key, l] of Object.entries(MUSIC_LIBS)) {
+        const t = document.createElement("button");
+        t.className = "fxTab" + (lib === key ? " sel" : "");
+        t.textContent = l.name;
+        t.onclick = () => { lib = key; stopLibPreview(); renderTabs(); renderContent(); };
+        tabs.appendChild(t);
+      }
+    };
+
+    const renderContent = () => {
+      content.innerHTML = "";
+      if (lib === "device") {
+        const add = document.createElement("button");
+        add.className = "sheetBtn primary";
+        add.textContent = "🎵 Müzik Dosyası Ekle";
+        add.onclick = () => $("#fileMusic").click();
+        content.appendChild(add);
+        const hint = document.createElement("p");
+        hint.style.cssText = "font-size:12px;color:var(--dim);text-align:center;margin-top:6px";
+        hint.textContent = state.musics.length
+          ? "Düzenlemek için şeritteki müzik çubuğuna dokun: böl, kes, hızlandır, sil."
+          : "MP3, M4A, WAV… cihazından ekle ya da üstteki kütüphanelerde ara.";
+        content.appendChild(hint);
+        return;
+      }
+      const search = document.createElement("input");
+      search.className = "fxSearch";
+      search.placeholder = "🔍 Parça ara… (Enter)";
+      content.appendChild(search);
+      const list = document.createElement("div");
+      content.appendChild(list);
+      const doSearch = async () => {
+        const q = search.value.trim();
+        if (!q) return;
+        list.innerHTML = `<p style="font-size:12px;color:var(--dim);text-align:center;padding:12px">Aranıyor…</p>`;
+        try {
+          const results = await MUSIC_LIBS[lib].search(q);
+          list.innerHTML = "";
+          if (!results.length) {
+            list.innerHTML = `<p style="font-size:12px;color:var(--dim);text-align:center;padding:12px">Sonuç yok.</p>`;
+            return;
+          }
+          for (const item of results) {
+            const row = document.createElement("div");
+            row.className = "libRow";
+            row.innerHTML = `
+              <button class="pbtn prev">▶</button>
+              <span class="linfo"><span class="ltitle"></span><span class="lartist"></span></span>
+              <button class="pbtn addb">＋</button>`;
+            row.querySelector(".ltitle").textContent = item.title;
+            row.querySelector(".lartist").textContent = item.artist;
+            const pv = row.querySelector(".prev");
+            pv.onclick = async () => {
+              if (libPreview && libPreview._src === item) { stopLibPreview(); pv.textContent = "▶"; return; }
+              stopLibPreview();
+              content.querySelectorAll(".prev").forEach(b => b.textContent = "▶");
+              pv.textContent = "…";
+              try {
+                const u = await item.resolve();
+                if (!u) throw new Error("yok");
+                libPreview = new Audio(u);
+                libPreview._src = item;
+                libPreview.play().catch(() => toast("Önizleme çalınamadı"));
+                pv.textContent = "⏸";
+              } catch (_) { pv.textContent = "▶"; toast("Önizleme alınamadı"); }
+            };
+            row.querySelector(".addb").onclick = async ev => {
+              ev.target.textContent = "…";
+              try {
+                const u = await item.resolve();
+                if (!u) throw new Error("url yok");
+                await addMusicFromUrl(u, item.title);
+                ev.target.textContent = "✓";
+              } catch (err) {
+                ev.target.textContent = "＋";
+                toast("İndirilemedi — başka parça/kaynak dene");
+              }
+            };
+            list.appendChild(row);
+          }
+        } catch (_) {
+          list.innerHTML = `<p style="font-size:12px;color:var(--dim);text-align:center;padding:12px">Kütüphaneye ulaşılamadı. İnternet bağlantını kontrol et.</p>`;
+        }
+      };
+      search.addEventListener("keydown", ev => { if (ev.key === "Enter") { ev.preventDefault(); doSearch(); } });
+      const go = document.createElement("button");
+      go.className = "sheetBtn";
+      go.textContent = "Ara";
+      go.onclick = doSearch;
+      content.insertBefore(go, list);
+    };
+
+    renderTabs();
+    renderContent();
   });
 }
 
@@ -2365,6 +2641,7 @@ $("#fileMusic").onchange = async e => {
   const f = e.target.files[0];
   e.target.value = "";
   if (!f) return;
+  pushHistory();
   const url = URL.createObjectURL(f);
   const mediaId = uid();
   idbPut("media", { id: mediaId, blob: f, name: f.name, type: f.type }).catch(() => {});
@@ -3082,6 +3359,7 @@ async function newProject(tool) {
   state.resolution = 720;
   state.fps = 30;
   applyAspect();
+  clearHistory();
   pendingTool = tool || null;
   enterEditor();
   $("#fileVideo").click();
@@ -3161,6 +3439,7 @@ async function openProject(rec) {
     });
   }
   lastSavedJson = JSON.stringify(projectData());
+  clearHistory();
   if (state.clips.length) {
     $("#emptyState").style.display = "none";
     $("#btnExport").disabled = false;

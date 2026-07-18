@@ -28,6 +28,8 @@ Ayarlar → Pages → dalı seç → yayınla.
 - 🅣 **Animasyonlu metin**: Giriş animasyonları (Pop, Solma, Kayma, Zıplama, Dönme, Daktilo) + döngü hareketleri (Dalga, Gökkuşağı, Nabız, Süzülme, Titreme); sürükleyerek konumlandır
 - 😀 **Bindirme objeler**: Emoji çıkartmaları, giriş animasyonu + sürekli hareket (süzülme, dönme, nabız…), boyut/süre ayarı, sürükleyerek taşıma
 - 🎵 **Müzik**: Birden çok parça ekle (oynatma çubuğundan başlar); çubuğunu sürükleyerek taşı/kırp, böl, sil, hızlandır (0.1x–10x), ses seviyesi; müzik videodan uzunsa proje son karede donarak müziğin sonuna kadar uzar
+- 📚 **Müzik kütüphaneleri**: Cihazından eklemenin yanında 3 çevrimiçi kaynakta ara, dinle ve tek dokunuşla projeye ekle — İnternet Arşivi (archive.org), Openverse ve iTunes 30 sn önizmeleri; eklenen parçalar projeyle birlikte cihazına kaydedilir
+- ↩️ **Geri al / Yinele**: PC'de Ctrl+Z geri alır, Ctrl+X (veya Ctrl+Y / Ctrl+Shift+Z) yineler; mobilde üst çubuktaki ↩ ↪ düğmeleri — 50 adıma kadar
 - ⬛ **En-boy oranı**: 9:16, 16:9, 1:1, 4:5
 - 🎚️ **Dışa aktarma ayarları**: Çözünürlük (480p / 720p / 1080p) ve kare hızı (24 / 30 / 60 fps) seçimi, tahmini dosya boyutuyla; seçimler projeyle birlikte kaydedilir
 - 📤 **Hızlı render (CapCut tarzı)**: WebCodecs destekleyen tarayıcılarda video kare kare offline kodlanır, ses offline mikslenir — önizleme taksa bile çıktı her zaman akıcıdır ve çoğu cihazda gerçek zamandan hızlı biter. WebCodecs yoksa MediaRecorder ile gerçek zamanlı kayda düşer.
