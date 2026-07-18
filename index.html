@@ -3223,24 +3223,21 @@ async function fastRender(codec, withAudio) {
     durationMs: total * 1000,
   });
 
-  /* 1) ses: offline miksle ve kodla */
-  let audioBuffer = null;
-  if (withAudio) {
-    $("#modalDesc").textContent = "Ses miksleniyor…";
-    try { audioBuffer = await mixAudioOffline(total); } catch (_) { audioBuffer = null; }
-  }
-  if (exportAbort) throw new Error("abort");
-  const audioChunks = [];
-  if (audioBuffer) {
+  /* 1) ses: video kodlamasıyla PARALEL mikslenir ve kodlanır */
+  const audioJob = !withAudio ? Promise.resolve(null) : (async () => {
+    const audioBuffer = await mixAudioOffline(total).catch(() => null);
+    if (!audioBuffer || exportAbort) return null;
+    const chunks = [];
+    let head = null;
     const aenc = new AudioEncoder({
       output: (chunk, meta) => {
         const desc = meta && meta.decoderConfig && meta.decoderConfig.description;
         if (desc) {
-          opusHead = desc instanceof ArrayBuffer
+          head = desc instanceof ArrayBuffer
             ? new Uint8Array(desc)
             : new Uint8Array(desc.buffer, desc.byteOffset, desc.byteLength);
         }
-        audioChunks.push(chunk);
+        chunks.push(chunk);
       },
       error: e => console.error("AudioEncoder:", e),
     });
@@ -3264,15 +3261,14 @@ async function fastRender(codec, withAudio) {
     }
     await aenc.flush();
     aenc.close();
-    audioIncluded = audioChunks.length > 0;
-    for (const c of audioChunks) muxer.addAudio(c);
-  }
-  if (exportAbort) throw new Error("abort");
+    return { chunks, head };
+  })();
 
-  /* 2) video: her kareyi kesin zamana sarıp kodla.
-     Hızlandırma: her video klip için ikinci bir "gölge" eleman
-     oluşturulur; kare i çizilirken kare i+1'in sarması diğer
-     elemanda paralel yürür (çift tampon). */
+  /* 2) video: her kare kesin zamana sarılıp kodlanır.
+     Aynı klip içinde TEK eleman kullanılır (iki elemanın bitişik
+     hedeflere farklı kare çözmesi çıktıda titremeye yol açabiliyordu);
+     hız, donanım kodlayıcı + paralel ses + klip sınırında ön-ısıtma
+     ile sağlanır. */
   let encError = null;
   const venc = new VideoEncoder({
     output: chunk => muxer.addVideo(chunk),
@@ -3282,57 +3278,62 @@ async function fastRender(codec, withAudio) {
     codec, width: state.exportW, height: state.exportH,
     bitrate: exportBitrate(), framerate: fps,
   };
-  try { venc.configure({ ...vconf, latencyMode: "realtime" }); }
-  catch (_) { venc.configure(vconf); }
-
-  const shadows = new Map();   // clip -> [asıl el, gölge el]
-  for (const c of state.clips) {
-    if (c.type !== "video") continue;
-    const b = document.createElement("video");
-    b.preload = "auto"; b.muted = true;
-    b.playsInline = true; b.setAttribute("playsinline", "");
-    b.src = c.url;
-    await new Promise(r => { b.onloadedmetadata = r; b.onerror = r; });
-    shadows.set(c, [c.el, b]);
+  /* cihazın donanım kodlayıcısını zorla; yoksa yazılım "quality" modu
+     (realtime modu yazılım kodlayıcıda parlama/pompalama yapabiliyor) */
+  let configured = false;
+  for (const cfg of [
+    { ...vconf, hardwareAcceleration: "prefer-hardware", latencyMode: "realtime" },
+    { ...vconf, latencyMode: "quality" },
+    vconf,
+  ]) {
+    try {
+      const s = await VideoEncoder.isConfigSupported(cfg);
+      if (s.supported) { venc.configure(cfg); configured = true; break; }
+    } catch (_) {}
   }
-  const issueSeek = i => {
-    const t = Math.min(i / fps, Math.max(total - .001, 0));
-    const loc = locate(t);
-    if (!loc || loc.clip.type !== "video") return { t, clip: null, el: null, promise: Promise.resolve() };
-    const el = shadows.get(loc.clip)[i % 2];
-    return { t, clip: loc.clip, el, promise: seekVideoExact(el, loc.clip.in + loc.offset * loc.clip.speed) };
-  };
+  if (!configured) venc.configure(vconf);
 
-  let cur = issueSeek(0);
   for (let i = 0; i < frames; i++) {
     if (exportAbort) { venc.close(); throw new Error("abort"); }
     if (encError) { throw encError; }
-    const next = i + 1 < frames ? issueSeek(i + 1) : null;   // paralel ön-sarma
-    await cur.promise;
-    state.t = cur.t;
-    await renderSeekExtras(cur.t);
-    /* çizim, sarılmış gölge eleman üzerinden yapılır */
-    let savedEl = null;
-    if (cur.clip) { savedEl = cur.clip.el; cur.clip.el = cur.el; }
+    const t = Math.min(i / fps, Math.max(total - .001, 0));
+    const loc = locate(t);
+    if (loc && loc.clip.type === "video") {
+      await seekVideoExact(loc.clip.el, loc.clip.in + loc.offset * loc.clip.speed);
+    }
+    await renderSeekExtras(t);
+    state.t = t;
     drawFrame();
-    if (cur.clip) cur.clip.el = savedEl;
     const frame = new VideoFrame(canvas, {
       timestamp: Math.round(i * 1e6 / fps),
       duration: Math.round(1e6 / fps),
     });
     venc.encode(frame, { keyFrame: i % (fps * 5) === 0 });
     frame.close();
+    /* bir sonraki kare farklı klipteyse o klibi beklemeden ön-ısıt */
+    if (i + 1 < frames) {
+      const nl = locate(Math.min((i + 1) / fps, total - .001));
+      if (nl && nl.clip !== (loc && loc.clip) && nl.clip.type === "video") {
+        try { nl.clip.el.currentTime = nl.clip.in + nl.offset * nl.clip.speed; } catch (_) {}
+      }
+    }
     /* kodlayıcı kuyruğu şişmesin */
-    while (venc.encodeQueueSize > 6 && !encError && !exportAbort) await new Promise(r => setTimeout(r, 2));
+    while (venc.encodeQueueSize > 12 && !encError && !exportAbort) await new Promise(r => setTimeout(r, 2));
     if (i % 5 === 0) {
       $("#progressInner").style.width = (i / frames * 100).toFixed(1) + "%";
       $("#modalDesc").textContent = `Kare ${i + 1} / ${frames}`;
     }
-    cur = next;
   }
   await venc.flush();
   venc.close();
-  for (const [, pair] of shadows) { pair[1].removeAttribute("src"); pair[1].load(); }
+
+  /* paralel yürüyen ses işini topla */
+  const audioRes = await audioJob;
+  if (audioRes && audioRes.chunks.length) {
+    audioIncluded = true;
+    if (audioRes.head) opusHead = audioRes.head;
+    for (const c of audioRes.chunks) muxer.addAudio(c);
+  }
   if (exportAbort) throw new Error("abort");
 
   const blob = muxer.finish({ hasAudio: audioIncluded, opusHead });

@@ -40,7 +40,7 @@ Ayarlar → Pages → dalı seç → yayınla.
 ## Nasıl çalışıyor?
 
 - Önizleme ve dışa aktarma tek bir `<canvas>` üzerinden çizilir; filtreler CSS filter, metinler canvas metni olarak işlenir.
-- **Hızlı render**: her kare için videolar tam zamana sarılır, kare `VideoEncoder` (VP9/VP8) ile kodlanır; ses `OfflineAudioContext` ile mikslenip `AudioEncoder` (Opus) ile kodlanır ve dosya içindeki minimal Matroska/WebM muxer ile birleştirilir. Kare düşmesi mümkün değildir. Her klip için ikinci bir "gölge" video elemanı tutulur: bir kare kodlanırken sıradaki karenin sarması paralel yürür (çift tampon), bu render süresini belirgin kısaltır.
+- **Hızlı render**: her kare için videolar tam zamana sarılır, kare `VideoEncoder` ile kodlanır; ses `OfflineAudioContext` ile mikslenip `AudioEncoder` (Opus) ile **videoyla paralel** kodlanır ve dosya içindeki minimal Matroska/WebM muxer ile birleştirilir. Kare düşmesi mümkün değildir. Kodlayıcı önce cihazın **donanım kodlayıcısını** dener (telefonlarda en hızlı ve en stabil yol), yoksa yazılım "quality" moduna düşer.
 - WebCodecs olmayan tarayıcılarda `canvas.captureStream()` + `MediaRecorder` ile gerçek zamanlı kayda düşülür.
 
 ## Sınırlamalar
