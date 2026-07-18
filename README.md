@@ -35,6 +35,7 @@ Ayarlar → Pages → dalı seç → yayınla.
 - ⬛ **En-boy oranı**: 9:16, 16:9, 1:1, 4:5
 - 🎚️ **Dışa aktarma ayarları**: Çözünürlük (480p / 720p / 1080p / 2K β / 4K β) ve kare hızı (24 / 30 / 60 / 90 β / 120 β fps) seçimi, tahmini dosya boyutuyla; seçimler projeyle birlikte kaydedilir. β işaretli seçenekler beta'dır — bazı telefonlarda stabil çalışmayabilir
 - 🔍 **Video Upscale (aç/kapa)**: Açıkken çıktı %50 büyütülüp yüksek kaliteli ölçekleme ile kodlanır; yazılar, çıkartmalar ve efektler yüksek çözünürlükte yeniden çizildiği için gerçekten daha keskin çıkar
+- 🎞 **Kare Üretici (aç/kapa)**: 60/90/120 fps dışa aktarmada düşük fps'li kaynaklar için ara kareler harmanlanarak üretilir (echo frame blending) — hareket akıcılaşır; yalnızca 60 fps ve üstünde etkilidir
 - 📤 **Hızlı render (CapCut tarzı)**: WebCodecs destekleyen tarayıcılarda video kare kare offline kodlanır, ses offline mikslenir — önizleme taksa bile çıktı her zaman akıcıdır ve çoğu cihazda gerçek zamandan hızlı biter. WebCodecs yoksa MediaRecorder ile gerçek zamanlı kayda düşer.
 - ⚡ **Akıcı önizleme**: Düzenleme sırasında canvas ekran çözünürlüğünde çalışır (dışa aktarmada tam çözünürlüğe geçer), kare yalnızca gerektiğinde yeniden çizilir
 

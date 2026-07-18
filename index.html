@@ -599,6 +599,7 @@ const state = {
   resolution: 720,   // kısa kenar (480/720/1080/1440/2160)
   fps: 30,
   upscale: false,    // açıkken çıktı %50 büyütülüp yüksek kaliteli ölçeklenir
+  frameGen: false,   // kare üretici: 60+ fps'te ara kare harmanlama
   exportW: 720,
   exportH: 1280,
   rendering: false,
@@ -656,7 +657,7 @@ function snapState() {
     overlays: state.overlays.map(o => ({ ...o })),
     musics: state.musics.map(m => ({ ...m })),
     aspect: state.aspect, resolution: state.resolution, fps: state.fps,
-    upscale: state.upscale, leadGap: state.leadGap,
+    upscale: state.upscale, frameGen: state.frameGen, leadGap: state.leadGap,
   };
 }
 function stateJson() { try { return JSON.stringify(projectData()); } catch (_) { return String(Math.random()); } }
@@ -677,6 +678,7 @@ function applySnap(s) {
   const aspectChanged = state.aspect !== s.aspect || state.resolution !== s.resolution;
   state.aspect = s.aspect; state.resolution = s.resolution; state.fps = s.fps;
   state.upscale = !!s.upscale;
+  state.frameGen = !!s.frameGen;
   state.leadGap = s.leadGap || 0;
   if (aspectChanged) applyAspect();
   $("#emptyState").style.display = state.clips.length ? "none" : "flex";
@@ -2901,6 +2903,17 @@ $("#btnExport").onclick = () => {
     upNote.style.cssText = "font-size:10px;color:var(--dim);margin:2px 0 0";
     upNote.textContent = "Açıkken görüntü %50 büyütülüp yüksek kaliteli ölçekleme ile netleştirilir; yazı ve efektler daha keskin çıkar (render süresi uzar).";
     body.appendChild(upNote);
+
+    const fg = document.createElement("button");
+    fg.className = "sheetBtn";
+    const fgLabel = () => "🎞 Kare Üretici (60+ fps): " + (state.frameGen ? "Açık" : "Kapalı");
+    fg.textContent = fgLabel();
+    fg.onclick = () => { state.frameGen = !state.frameGen; fg.textContent = fgLabel(); };
+    body.appendChild(fg);
+    const fgNote = document.createElement("p");
+    fgNote.style.cssText = "font-size:10px;color:var(--dim);margin:2px 0 0";
+    fgNote.textContent = "60/90/120 fps'te düşük fps'li kaynaklardan ara kareler harmanlanarak üretilir (frame blending) — hareket daha akıcı görünür. Yalnızca 60 fps ve üstünde etkilidir.";
+    body.appendChild(fgNote);
     const est = document.createElement("p");
     est.style.cssText = "font-size:12px;color:var(--dim);text-align:center;margin:14px 0 4px";
     body.appendChild(est);
@@ -3316,6 +3329,17 @@ async function fastRender(codec, withAudio) {
   }
   if (!configured) venc.configure(vconf);
 
+  /* kare üretici (60+ fps): her kare bir önceki ÇIKTI karesiyle
+     harmanlanır (echo blend) — çoğaltılmış kaynak kareleri kademeli
+     geçişe dönüşür, hareket akıcılaşır */
+  const useFrameGen = state.frameGen && fps >= 60;
+  let prevOutCv = null;
+  if (useFrameGen) {
+    prevOutCv = document.createElement("canvas");
+    prevOutCv.width = state.exportW;
+    prevOutCv.height = state.exportH;
+  }
+
   for (let i = 0; i < frames; i++) {
     if (exportAbort) { venc.close(); throw new Error("abort"); }
     if (encError) { throw encError; }
@@ -3327,6 +3351,14 @@ async function fastRender(codec, withAudio) {
     await renderSeekExtras(t);
     state.t = t;
     drawFrame();
+    if (useFrameGen) {
+      if (i > 0) {
+        ctx.globalAlpha = .45;
+        ctx.drawImage(prevOutCv, 0, 0);
+        ctx.globalAlpha = 1;
+      }
+      prevOutCv.getContext("2d").drawImage(canvas, 0, 0);   // harmanlanmış çıktıyı sakla
+    }
     const frame = new VideoFrame(canvas, {
       timestamp: Math.round(i * 1e6 / fps),
       duration: Math.round(1e6 / fps),
@@ -3447,6 +3479,7 @@ function projectData() {
     resolution: state.resolution,
     fps: state.fps,
     upscale: state.upscale,
+    frameGen: state.frameGen,
     leadGap: state.leadGap,
     clips: state.clips.map(c => ({
       mediaId: c.mediaId, type: c.type, name: c.name, natDur: c.natDur,
@@ -3508,6 +3541,7 @@ async function newProject(tool) {
   state.resolution = 720;
   state.fps = 30;
   state.upscale = false;
+  state.frameGen = false;
   applyAspect();
   clearHistory();
   pendingTool = tool || null;
@@ -3523,6 +3557,7 @@ async function openProject(rec) {
   state.resolution = rec.data.resolution || 720;
   state.fps = rec.data.fps || 30;
   state.upscale = !!rec.data.upscale;
+  state.frameGen = !!rec.data.frameGen;
   state.leadGap = rec.data.leadGap || 0;
   applyAspect();
   toast("Proje açılıyor…");
