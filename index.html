@@ -1,0 +1,1258 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0b0b0f">
+<title>Pisan Cut — Mobil Video Editörü</title>
+<style>
+  :root {
+    --bg: #0b0b0f;
+    --bg2: #15151c;
+    --bg3: #1e1e28;
+    --line: #2a2a38;
+    --text: #f2f2f7;
+    --dim: #8e8e9d;
+    --accent: #2dd4bf;
+    --accent2: #0ea5b7;
+    --danger: #f43f5e;
+    --radius: 12px;
+    --safe-b: env(safe-area-inset-bottom, 0px);
+    --safe-t: env(safe-area-inset-top, 0px);
+  }
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { height:100%; overscroll-behavior:none; }
+  body {
+    background:var(--bg); color:var(--text);
+    font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    display:flex; flex-direction:column;
+    user-select:none; -webkit-user-select:none;
+    touch-action:manipulation;
+    height:100dvh;
+  }
+  button { font-family:inherit; color:inherit; background:none; border:none; cursor:pointer; }
+  input[type=range] { accent-color:var(--accent); }
+
+  /* ---------- Üst bar ---------- */
+  #topbar {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:calc(8px + var(--safe-t)) 12px 8px;
+    flex:0 0 auto;
+  }
+  #topbar .brand { display:flex; align-items:center; gap:8px; font-weight:700; font-size:15px; letter-spacing:.3px; }
+  #topbar .brand .logo {
+    width:26px; height:26px; border-radius:8px; display:grid; place-items:center;
+    background:linear-gradient(135deg, var(--accent), #818cf8); color:#06060a; font-size:13px; font-weight:900;
+  }
+  #btnExport {
+    background:linear-gradient(135deg, var(--accent), var(--accent2));
+    color:#04211e; font-weight:700; font-size:13px;
+    padding:8px 16px; border-radius:999px;
+  }
+  #btnExport:disabled { opacity:.4; }
+
+  /* ---------- Önizleme ---------- */
+  #previewWrap {
+    flex:1 1 auto; min-height:120px;
+    display:grid; place-items:center;
+    position:relative; overflow:hidden;
+    background:#000;
+  }
+  #previewBox { position:relative; max-width:100%; max-height:100%; }
+  #canvas { display:block; width:100%; height:100%; background:#000; border-radius:4px; }
+  #emptyState {
+    position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px;
+    color:var(--dim); font-size:14px; text-align:center; padding:20px;
+  }
+  #emptyState .big {
+    width:74px; height:74px; border-radius:50%;
+    background:linear-gradient(135deg, var(--accent), #818cf8);
+    color:#06060a; font-size:38px; font-weight:300; line-height:1;
+    display:grid; place-items:center;
+  }
+  #playOverlay {
+    position:absolute; inset:0; display:grid; place-items:center; pointer-events:none;
+  }
+  #playOverlay .ring {
+    width:58px; height:58px; border-radius:50%;
+    background:rgba(10,10,14,.55); backdrop-filter:blur(4px);
+    display:grid; place-items:center; font-size:22px; color:#fff;
+    opacity:0; transition:opacity .15s;
+  }
+  #playOverlay.show .ring { opacity:1; }
+
+  /* ---------- Oynatma satırı ---------- */
+  #transport {
+    flex:0 0 auto; display:flex; align-items:center; gap:10px;
+    padding:6px 14px;
+  }
+  #timeLabel { font-size:12px; color:var(--dim); font-variant-numeric:tabular-nums; min-width:86px; }
+  #btnPlay {
+    width:38px; height:38px; border-radius:50%; background:var(--bg3);
+    display:grid; place-items:center; font-size:15px;
+  }
+  #transport .spacer { flex:1; }
+  .iconBtn {
+    width:34px; height:34px; border-radius:9px; background:var(--bg3);
+    display:grid; place-items:center; font-size:15px; color:var(--text);
+  }
+  .iconBtn:disabled { opacity:.35; }
+
+  /* ---------- Zaman çizelgesi ---------- */
+  #timelineArea { flex:0 0 auto; position:relative; background:var(--bg2); border-top:1px solid var(--line); }
+  #playhead {
+    position:absolute; top:0; bottom:0; left:50%; width:2px; margin-left:-1px;
+    background:#fff; z-index:5; pointer-events:none;
+  }
+  #playhead::before {
+    content:""; position:absolute; top:0; left:50%; transform:translateX(-50%);
+    border:6px solid transparent; border-top-color:#fff;
+  }
+  #tlScroll {
+    overflow-x:auto; overflow-y:hidden;
+    scrollbar-width:none;
+  }
+  #tlScroll::-webkit-scrollbar { display:none; }
+  #tlContent { position:relative; padding:8px 0 10px; width:max-content; min-width:100%; }
+
+  #ruler { height:16px; position:relative; margin-bottom:6px; }
+  #ruler .tick { position:absolute; top:0; font-size:9px; color:var(--dim); transform:translateX(-50%); font-variant-numeric:tabular-nums; }
+  #ruler .tick::after { content:""; position:absolute; left:50%; top:12px; width:1px; height:3px; background:var(--line); }
+
+  #textTrack { height:16px; position:relative; margin-bottom:4px; }
+  .textBar {
+    position:absolute; top:2px; height:12px; border-radius:4px;
+    background:linear-gradient(135deg,#818cf8,#c084fc);
+    font-size:8px; line-height:12px; color:#0b0b14; font-weight:700;
+    padding:0 5px; overflow:hidden; white-space:nowrap;
+  }
+  .textBar.sel { outline:2px solid #fff; }
+
+  #clipTrack { height:56px; position:relative; display:flex; align-items:center; }
+  .clip {
+    position:relative; height:52px; flex:0 0 auto;
+    border-radius:8px; overflow:hidden; background:var(--bg3);
+    background-size:auto 100%; background-repeat:repeat-x;
+    outline:1px solid rgba(255,255,255,.08); outline-offset:-1px;
+  }
+  .clip + .clip { margin-left:3px; }
+  .clip.sel { outline:2px solid var(--accent); outline-offset:-2px; }
+  .clip .badge {
+    position:absolute; left:4px; bottom:3px;
+    font-size:8px; font-weight:700; color:#fff;
+    background:rgba(0,0,0,.55); border-radius:4px; padding:1px 4px;
+    pointer-events:none;
+  }
+  .handle {
+    position:absolute; top:0; bottom:0; width:16px; z-index:3;
+    display:none; touch-action:none;
+  }
+  .clip.sel .handle { display:block; }
+  .handle::after {
+    content:""; position:absolute; top:0; bottom:0; width:12px;
+    background:var(--accent); display:grid;
+  }
+  .handle.l { left:0; } .handle.l::after { left:0; border-radius:8px 0 0 8px; }
+  .handle.r { right:0; } .handle.r::after { right:0; border-radius:0 8px 8px 0; }
+  .handle::before {
+    content:""; position:absolute; top:50%; transform:translateY(-50%); z-index:1;
+    width:2px; height:16px; background:rgba(0,0,0,.55); border-radius:2px;
+  }
+  .handle.l::before { left:5px; } .handle.r::before { right:5px; }
+  #addClipBtn {
+    flex:0 0 auto; width:40px; height:52px; margin-left:8px;
+    border-radius:8px; background:var(--bg3); color:var(--dim);
+    font-size:20px; display:grid; place-items:center;
+  }
+  #musicRow {
+    height:20px; position:relative; margin-top:4px;
+  }
+  #musicBar {
+    position:absolute; top:2px; height:16px; border-radius:5px;
+    background:repeating-linear-gradient(90deg, #14532d 0 6px, #166534 6px 12px);
+    color:#bbf7d0; font-size:9px; line-height:16px; padding:0 6px;
+    overflow:hidden; white-space:nowrap; display:none;
+  }
+
+  /* ---------- Alt araç çubuğu ---------- */
+  #toolbar {
+    flex:0 0 auto; display:flex; overflow-x:auto; gap:2px;
+    padding:6px 8px calc(8px + var(--safe-b));
+    background:var(--bg2); border-top:1px solid var(--line);
+    scrollbar-width:none;
+  }
+  #toolbar::-webkit-scrollbar { display:none; }
+  .tool {
+    flex:0 0 auto; width:60px; display:flex; flex-direction:column; align-items:center; gap:4px;
+    padding:6px 0; border-radius:10px; color:var(--text);
+  }
+  .tool .ic { font-size:19px; }
+  .tool .lb { font-size:10px; color:var(--dim); }
+  .tool:active { background:var(--bg3); }
+  .tool.disabled { opacity:.35; pointer-events:none; }
+
+  /* ---------- Panel (bottom sheet) ---------- */
+  #sheet {
+    position:fixed; left:0; right:0; bottom:0; z-index:50;
+    background:var(--bg2); border-top:1px solid var(--line);
+    border-radius:18px 18px 0 0;
+    padding:10px 16px calc(16px + var(--safe-b));
+    transform:translateY(105%); transition:transform .22s ease;
+    max-height:62dvh; overflow-y:auto;
+  }
+  #sheet.open { transform:translateY(0); }
+  #sheetHead { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+  #sheetTitle { font-size:14px; font-weight:700; }
+  #sheetClose { font-size:13px; color:var(--accent); font-weight:600; padding:4px 8px; }
+  .row { display:flex; align-items:center; gap:12px; margin:12px 0; }
+  .row label { font-size:12px; color:var(--dim); min-width:70px; }
+  .row input[type=range] { flex:1; }
+  .row .val { font-size:12px; min-width:44px; text-align:right; font-variant-numeric:tabular-nums; }
+  .chips { display:flex; flex-wrap:wrap; gap:8px; }
+  .chip {
+    padding:8px 14px; border-radius:999px; background:var(--bg3);
+    font-size:12px; color:var(--text); border:1px solid transparent;
+  }
+  .chip.sel { border-color:var(--accent); color:var(--accent); font-weight:700; }
+  .filterGrid { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
+  .fItem { display:flex; flex-direction:column; align-items:center; gap:5px; }
+  .fItem .sw {
+    width:100%; aspect-ratio:1; border-radius:10px; border:2px solid transparent;
+    background:linear-gradient(135deg,#f59e0b,#3b82f6,#10b981);
+  }
+  .fItem.sel .sw { border-color:var(--accent); }
+  .fItem .nm { font-size:10px; color:var(--dim); }
+  .fItem.sel .nm { color:var(--accent); }
+  .sheetBtn {
+    display:block; width:100%; text-align:center;
+    background:var(--bg3); border-radius:var(--radius);
+    padding:12px; font-size:13px; font-weight:600; margin:8px 0;
+  }
+  .sheetBtn.primary { background:linear-gradient(135deg,var(--accent),var(--accent2)); color:#04211e; }
+  .sheetBtn.danger { color:var(--danger); }
+  textarea#textInput {
+    width:100%; background:var(--bg3); border:1px solid var(--line); border-radius:var(--radius);
+    color:var(--text); font-size:14px; padding:10px; resize:none; height:64px;
+    font-family:inherit; user-select:text; -webkit-user-select:text;
+  }
+  .colorRow { display:flex; gap:8px; flex-wrap:wrap; }
+  .colorDot { width:30px; height:30px; border-radius:50%; border:2px solid transparent; }
+  .colorDot.sel { border-color:#fff; }
+
+  /* ---------- Dışa aktarma modalı ---------- */
+  #modal {
+    position:fixed; inset:0; z-index:100; display:none;
+    background:rgba(5,5,8,.82); backdrop-filter:blur(6px);
+    place-items:center; padding:24px;
+  }
+  #modal.open { display:grid; }
+  #modalCard {
+    width:100%; max-width:320px; background:var(--bg2); border:1px solid var(--line);
+    border-radius:18px; padding:22px; text-align:center;
+  }
+  #modalCard h3 { font-size:15px; margin-bottom:6px; }
+  #modalCard p { font-size:12px; color:var(--dim); margin-bottom:14px; }
+  #progressOuter { height:6px; background:var(--bg3); border-radius:999px; overflow:hidden; margin-bottom:14px; }
+  #progressInner { height:100%; width:0%; background:linear-gradient(90deg,var(--accent),#818cf8); transition:width .2s; }
+  #modalCard .sheetBtn { margin:6px 0 0; }
+  #dlLink { display:none; }
+
+  #toast {
+    position:fixed; left:50%; bottom:calc(120px + var(--safe-b)); transform:translateX(-50%) translateY(20px);
+    background:rgba(30,30,40,.95); border:1px solid var(--line);
+    padding:9px 16px; border-radius:999px; font-size:12px; z-index:90;
+    opacity:0; pointer-events:none; transition:all .2s; white-space:nowrap;
+  }
+  #toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<header id="topbar">
+  <div class="brand"><span class="logo">P</span> Pisan Cut</div>
+  <button id="btnExport" disabled>Dışa Aktar</button>
+</header>
+
+<main id="previewWrap">
+  <div id="previewBox">
+    <canvas id="canvas" width="720" height="1280"></canvas>
+    <div id="playOverlay"><div class="ring">▶</div></div>
+  </div>
+  <div id="emptyState">
+    <button class="big" id="btnEmptyAdd">+</button>
+    <div>Başlamak için video veya fotoğraf ekle</div>
+  </div>
+</main>
+
+<div id="transport">
+  <button id="btnPlay">▶</button>
+  <span id="timeLabel">00:00.0 / 00:00.0</span>
+  <span class="spacer"></span>
+  <button class="iconBtn" id="btnUndoDel" title="Klibi sil" disabled>🗑</button>
+  <button class="iconBtn" id="btnZoomOut" title="Uzaklaş">−</button>
+  <button class="iconBtn" id="btnZoomIn" title="Yakınlaş">+</button>
+</div>
+
+<section id="timelineArea">
+  <div id="playhead"></div>
+  <div id="tlScroll">
+    <div id="tlContent">
+      <div id="ruler"></div>
+      <div id="textTrack"></div>
+      <div id="clipTrack"></div>
+      <div id="musicRow"><div id="musicBar"></div></div>
+    </div>
+  </div>
+</section>
+
+<nav id="toolbar">
+  <button class="tool" data-tool="add"><span class="ic">➕</span><span class="lb">Ekle</span></button>
+  <button class="tool needsel" data-tool="split"><span class="ic">✂️</span><span class="lb">Böl</span></button>
+  <button class="tool needsel" data-tool="speed"><span class="ic">⏩</span><span class="lb">Hız</span></button>
+  <button class="tool needsel" data-tool="volume"><span class="ic">🔊</span><span class="lb">Ses</span></button>
+  <button class="tool needsel" data-tool="filter"><span class="ic">🎨</span><span class="lb">Filtre</span></button>
+  <button class="tool needsel" data-tool="adjust"><span class="ic">🎛️</span><span class="lb">Ayarla</span></button>
+  <button class="tool" data-tool="text"><span class="ic">🅣</span><span class="lb">Metin</span></button>
+  <button class="tool" data-tool="music"><span class="ic">🎵</span><span class="lb">Müzik</span></button>
+  <button class="tool needsel" data-tool="duplicate"><span class="ic">⧉</span><span class="lb">Kopyala</span></button>
+  <button class="tool" data-tool="aspect"><span class="ic">⬛</span><span class="lb">Oran</span></button>
+</nav>
+
+<div id="sheet">
+  <div id="sheetHead">
+    <span id="sheetTitle"></span>
+    <button id="sheetClose">Bitti</button>
+  </div>
+  <div id="sheetBody"></div>
+</div>
+
+<div id="modal">
+  <div id="modalCard">
+    <h3 id="modalTitle">Dışa aktarılıyor…</h3>
+    <p id="modalDesc">Video gerçek zamanlı işleniyor, lütfen bekleyin.</p>
+    <div id="progressOuter"><div id="progressInner"></div></div>
+    <a id="dlLink" class="sheetBtn primary" download>Videoyu İndir</a>
+    <button id="modalCancel" class="sheetBtn danger">İptal</button>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<input type="file" id="fileVideo" accept="video/*,image/*" multiple hidden>
+<input type="file" id="fileMusic" accept="audio/*" hidden>
+
+<script>
+"use strict";
+/* =========================================================
+   Pisan Cut — tek dosyalık, CapCut benzeri mobil video editörü
+   Kayıt yok, sunucu yok: her şey tarayıcıda çalışır.
+   ========================================================= */
+
+const $ = s => document.querySelector(s);
+const canvas = $("#canvas"), ctx = canvas.getContext("2d");
+
+const ASPECTS = {
+  "9:16": [720, 1280],
+  "16:9": [1280, 720],
+  "1:1":  [1080, 1080],
+  "4:5":  [864, 1080],
+};
+
+const FILTERS = {
+  none:    { name: "Orijinal", css: "" },
+  vivid:   { name: "Canlı",    css: "saturate(1.45) contrast(1.08)" },
+  warm:    { name: "Sıcak",    css: "sepia(.25) saturate(1.25) brightness(1.05)" },
+  cool:    { name: "Soğuk",    css: "hue-rotate(15deg) saturate(1.1) brightness(1.02)" },
+  mono:    { name: "Siyah-Beyaz", css: "grayscale(1) contrast(1.1)" },
+  sepia:   { name: "Sepya",    css: "sepia(.85)" },
+  vintage: { name: "Retro",    css: "sepia(.4) contrast(.92) brightness(1.05) saturate(.8)" },
+  dramatic:{ name: "Dramatik", css: "contrast(1.3) brightness(.92) saturate(1.1)" },
+};
+
+const TEXT_COLORS = ["#ffffff","#0b0b0f","#f43f5e","#f59e0b","#22c55e","#3b82f6","#a855f7","#2dd4bf"];
+
+const state = {
+  clips: [],       // {id,type:'video'|'image',url,name,el,natDur,in,out,speed,volume,filter,adjust:{b,c,s},thumb}
+  texts: [],       // {id,content,start,dur,x,y,size,color,bg}
+  music: null,     // {url,name,el,volume}
+  aspect: "9:16",
+  t: 0,
+  playing: false,
+  pps: 56,         // piksel / saniye
+  selClip: null,
+  selText: null,
+};
+let idSeq = 1;
+
+/* ---------- yardımcılar ---------- */
+const clipDur = c => (c.out - c.in) / c.speed;
+/* Seçili klip yoksa oynatma çubuğunun altındaki klibi hedefle */
+const targetClip = () => state.selClip || (locate(state.t) || {}).clip || null;
+const totalDur = () => state.clips.reduce((a, c) => a + clipDur(c), 0);
+function clipStart(c) {
+  let t = 0;
+  for (const k of state.clips) { if (k === c) return t; t += clipDur(k); }
+  return t;
+}
+function locate(t) {
+  let acc = 0;
+  for (const c of state.clips) {
+    const d = clipDur(c);
+    if (t < acc + d || c === state.clips[state.clips.length - 1]) {
+      return { clip: c, offset: Math.min(Math.max(t - acc, 0), d) };
+    }
+    acc += d;
+  }
+  return null;
+}
+function fmt(t) {
+  t = Math.max(0, t);
+  const m = Math.floor(t / 60), s = Math.floor(t % 60), d = Math.floor((t % 1) * 10);
+  return `${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}.${d}`;
+}
+function toast(msg) {
+  const el = $("#toast");
+  el.textContent = msg;
+  el.classList.add("show");
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.classList.remove("show"), 1800);
+}
+
+/* ---------- medya ekleme ---------- */
+$("#btnEmptyAdd").onclick = () => $("#fileVideo").click();
+$("#fileVideo").onchange = async e => {
+  const files = [...e.target.files];
+  e.target.value = "";
+  for (const f of files) await addMedia(f);
+  if (state.clips.length) {
+    $("#emptyState").style.display = "none";
+    $("#btnExport").disabled = false;
+  }
+  renderAll();
+  seekTo(state.t, true);
+};
+
+function addMedia(file) {
+  return new Promise(resolve => {
+    const url = URL.createObjectURL(file);
+    if (file.type.startsWith("image/")) {
+      const img = new Image();
+      img.onload = () => {
+        const c = mkClip("image", url, file.name, img, 3);
+        c.thumb = makeThumb(img, img.naturalWidth, img.naturalHeight);
+        state.clips.push(c);
+        resolve();
+      };
+      img.onerror = () => { toast("Görsel açılamadı: " + file.name); resolve(); };
+      img.src = url;
+    } else {
+      const v = document.createElement("video");
+      v.src = url;
+      v.preload = "auto";
+      v.playsInline = true; v.setAttribute("playsinline", "");
+      v.crossOrigin = "anonymous";
+      v.onloadedmetadata = async () => {
+        v.onloadedmetadata = null;
+        const dur = await resolveDuration(v);
+        const c = mkClip("video", url, file.name, v, dur);
+        state.clips.push(c);
+        grabThumb(c);
+        resolve();
+      };
+      v.onerror = () => { toast("Video açılamadı: " + file.name); resolve(); };
+    }
+  });
+}
+
+/* MediaRecorder çıktısı WebM'lerde duration=Infinity gelir (Chrome);
+   sona sarıp gerçek süreyi okuyoruz. */
+function resolveDuration(v) {
+  if (isFinite(v.duration) && v.duration > 0) return Promise.resolve(v.duration);
+  return new Promise(res => {
+    const finish = d => {
+      v.removeEventListener("durationchange", onDur);
+      clearTimeout(to);
+      try { v.currentTime = 0; } catch (_) {}
+      res(d);
+    };
+    const onDur = () => { if (isFinite(v.duration) && v.duration > 0) finish(v.duration); };
+    const to = setTimeout(() => finish(isFinite(v.duration) && v.duration > 0 ? v.duration : 1), 3000);
+    v.addEventListener("durationchange", onDur);
+    try { v.currentTime = 1e7; } catch (_) { finish(1); }
+  });
+}
+
+function mkClip(type, url, name, el, natDur) {
+  return {
+    id: idSeq++, type, url, name, el,
+    natDur, in: 0, out: natDur,
+    speed: 1, volume: 1, filter: "none",
+    adjust: { b: 1, c: 1, s: 1 },
+    thumb: null,
+  };
+}
+
+function makeThumb(source, w, h) {
+  const tw = 72, th = 52;
+  const tc = document.createElement("canvas");
+  tc.width = tw; tc.height = th;
+  const tctx = tc.getContext("2d");
+  const scale = Math.max(tw / w, th / h);
+  tctx.drawImage(source, (tw - w * scale) / 2, (th - h * scale) / 2, w * scale, h * scale);
+  return tc.toDataURL("image/jpeg", .6);
+}
+
+function grabThumb(clip) {
+  const v = clip.el;
+  const cap = () => {
+    try {
+      clip.thumb = makeThumb(v, v.videoWidth, v.videoHeight);
+      renderTimeline();
+    } catch (_) {}
+  };
+  const once = () => { cap(); v.removeEventListener("seeked", once); };
+  v.addEventListener("seeked", once);
+  try { v.currentTime = Math.min(.1, clip.natDur / 2); } catch (_) { cap(); }
+}
+
+/* ---------- çizim ---------- */
+function buildFilter(c) {
+  const a = c.adjust;
+  const adj = `brightness(${a.b}) contrast(${a.c}) saturate(${a.s})`;
+  const f = FILTERS[c.filter]?.css || "";
+  return (f + " " + adj).trim();
+}
+
+function drawFrame() {
+  const W = canvas.width, H = canvas.height;
+  ctx.filter = "none";
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, W, H);
+  const loc = locate(state.t);
+  if (loc) {
+    const c = loc.clip;
+    const src = c.el;
+    const sw = c.type === "image" ? src.naturalWidth : src.videoWidth;
+    const sh = c.type === "image" ? src.naturalHeight : src.videoHeight;
+    if (sw && sh) {
+      const scale = Math.min(W / sw, H / sh);
+      const dw = sw * scale, dh = sh * scale;
+      ctx.filter = buildFilter(c);
+      ctx.drawImage(src, (W - dw) / 2, (H - dh) / 2, dw, dh);
+      ctx.filter = "none";
+    }
+  }
+  // metin katmanları
+  for (const tx of state.texts) {
+    if (state.t < tx.start || state.t > tx.start + tx.dur) continue;
+    const px = tx.size * H;
+    ctx.font = `700 ${px}px -apple-system, "Segoe UI", Roboto, sans-serif`;
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    const x = tx.x * W, y = tx.y * H;
+    const lines = tx.content.split("\n");
+    lines.forEach((ln, i) => {
+      const ly = y + (i - (lines.length - 1) / 2) * px * 1.2;
+      if (tx.bg) {
+        const m = ctx.measureText(ln);
+        ctx.fillStyle = "rgba(0,0,0,.55)";
+        const pad = px * .3;
+        roundRect(x - m.width / 2 - pad, ly - px / 2 - pad * .4, m.width + pad * 2, px + pad * .8, px * .25);
+      }
+      ctx.fillStyle = tx.color;
+      ctx.strokeStyle = "rgba(0,0,0,.4)";
+      ctx.lineWidth = px * .06;
+      ctx.strokeText(ln, x, ly);
+      ctx.fillText(ln, x, ly);
+    });
+    if (tx === state.selText) {
+      ctx.strokeStyle = "#2dd4bf"; ctx.lineWidth = 2; ctx.setLineDash([6, 5]);
+      const w = Math.max(...lines.map(l => ctx.measureText(l).width)) + px * .6;
+      const h = lines.length * px * 1.2 + px * .4;
+      ctx.strokeRect(x - w / 2, y - h / 2, w, h);
+      ctx.setLineDash([]);
+    }
+  }
+}
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.fill();
+}
+
+/* ---------- oynatma motoru ---------- */
+let lastTick = 0;
+function tick(now) {
+  requestAnimationFrame(tick);
+  const dt = Math.min((now - lastTick) / 1000, .1);
+  lastTick = now;
+  if (state.playing) {
+    state.t += dt;
+    if (state.t >= totalDur()) {
+      state.t = totalDur();
+      pause();
+    }
+    syncMedia();
+    scrollToTime(true);
+  }
+  drawFrame();
+  $("#timeLabel").textContent = fmt(state.t) + " / " + fmt(totalDur());
+}
+requestAnimationFrame(t => { lastTick = t; tick(t); });
+
+function syncMedia() {
+  const loc = locate(state.t);
+  for (const c of state.clips) {
+    if (c.type !== "video") continue;
+    const v = c.el;
+    if (loc && c === loc.clip && state.playing) {
+      const target = c.in + loc.offset * c.speed;
+      v.playbackRate = Math.min(Math.max(c.speed, .25), 4);
+      v.volume = c.volume;
+      v.muted = c.volume === 0;
+      if (Math.abs(v.currentTime - target) > .25) v.currentTime = target;
+      if (v.paused) v.play().catch(() => {});
+    } else if (!v.paused) v.pause();
+  }
+  const m = state.music;
+  if (m) {
+    if (state.playing && state.t < m.el.duration) {
+      m.el.volume = m.volume;
+      if (Math.abs(m.el.currentTime - state.t) > .3) m.el.currentTime = state.t;
+      if (m.el.paused) m.el.play().catch(() => {});
+    } else if (!m.el.paused) m.el.pause();
+  }
+}
+
+function play() {
+  if (!state.clips.length) return;
+  if (state.t >= totalDur() - .05) state.t = 0;
+  state.playing = true;
+  $("#btnPlay").textContent = "⏸";
+  syncMedia();
+}
+function pause() {
+  state.playing = false;
+  $("#btnPlay").textContent = "▶";
+  for (const c of state.clips) if (c.type === "video" && !c.el.paused) c.el.pause();
+  if (state.music && !state.music.el.paused) state.music.el.pause();
+}
+$("#btnPlay").onclick = () => state.playing ? pause() : play();
+$("#previewBox").addEventListener("click", e => {
+  if (textDrag.moved) return;
+  const hit = pickText(e);
+  if (hit) { state.selText = hit; renderTimeline(); return; }
+  if (state.selText) { state.selText = null; renderTimeline(); return; }
+  state.playing ? pause() : play();
+  const ov = $("#playOverlay");
+  ov.classList.add("show");
+  ov.querySelector(".ring").textContent = state.playing ? "⏸" : "▶";
+  setTimeout(() => ov.classList.remove("show"), 500);
+});
+
+function seekTo(t, force) {
+  state.t = Math.min(Math.max(t, 0), totalDur());
+  const loc = locate(state.t);
+  if (loc && loc.clip.type === "video") {
+    const target = loc.clip.in + loc.offset * loc.clip.speed;
+    const v = loc.clip.el;
+    if (force || Math.abs(v.currentTime - target) > .05) {
+      try { v.currentTime = target; } catch (_) {}
+    }
+  }
+  scrollToTime(true);
+}
+
+/* ---------- zaman çizelgesi ---------- */
+const tlScroll = $("#tlScroll");
+let tlPad = 0, ignoreScroll = false;
+
+function scrollToTime(setting) {
+  ignoreScroll = !!setting;
+  tlScroll.scrollLeft = state.t * state.pps;
+  requestAnimationFrame(() => ignoreScroll = false);
+}
+/* Oynatma sırasında scrollLeft'i biz güncellediğimiz için scroll olayı
+   gecikmeli gelebilir; bu yüzden sarma yalnızca kullanıcı dokununca duraklatır. */
+tlScroll.addEventListener("pointerdown", () => { if (state.playing) pause(); });
+tlScroll.addEventListener("touchstart", () => { if (state.playing) pause(); }, { passive: true });
+tlScroll.addEventListener("wheel", () => { if (state.playing) pause(); }, { passive: true });
+tlScroll.addEventListener("scroll", () => {
+  if (ignoreScroll || state.playing) return;
+  state.t = Math.min(Math.max(tlScroll.scrollLeft / state.pps, 0), totalDur());
+  const loc = locate(state.t);
+  if (loc && loc.clip.type === "video") {
+    const v = loc.clip.el;
+    const target = loc.clip.in + loc.offset * loc.clip.speed;
+    if (Math.abs(v.currentTime - target) > .08) {
+      try { v.currentTime = target; } catch (_) {}
+    }
+  }
+});
+
+function renderTimeline() {
+  tlPad = tlScroll.clientWidth / 2;
+  const content = $("#tlContent");
+  content.style.paddingLeft = tlPad + "px";
+  content.style.paddingRight = tlPad + "px";
+
+  // cetvel
+  const ruler = $("#ruler");
+  ruler.innerHTML = "";
+  const rawTotal = totalDur();
+  const total = Math.min(Math.max(isFinite(rawTotal) ? rawTotal : 1, 1), 7200);
+  ruler.style.width = total * state.pps + "px";
+  const step = state.pps >= 90 ? 1 : state.pps >= 40 ? 2 : 5;
+  for (let s = 0; s <= Math.ceil(total); s += step) {
+    const el = document.createElement("span");
+    el.className = "tick";
+    el.style.left = s * state.pps + "px";
+    el.textContent = s + "s";
+    ruler.appendChild(el);
+  }
+
+  // metin şeridi
+  const tt = $("#textTrack");
+  tt.innerHTML = "";
+  tt.style.width = total * state.pps + "px";
+  for (const tx of state.texts) {
+    const b = document.createElement("div");
+    b.className = "textBar" + (tx === state.selText ? " sel" : "");
+    b.style.left = tx.start * state.pps + "px";
+    b.style.width = Math.max(tx.dur * state.pps, 14) + "px";
+    b.textContent = tx.content.replace(/\n/g, " ");
+    b.onclick = ev => { ev.stopPropagation(); state.selText = tx; state.selClip = null; renderTimeline(); openTextSheet(tx); };
+    tt.appendChild(b);
+  }
+
+  // klip şeridi
+  const track = $("#clipTrack");
+  track.innerHTML = "";
+  for (const c of state.clips) {
+    const d = document.createElement("div");
+    d.className = "clip" + (c === state.selClip ? " sel" : "");
+    d.style.width = Math.max(clipDur(c) * state.pps, 24) + "px";
+    if (c.thumb) d.style.backgroundImage = `url(${c.thumb})`;
+    const badge = document.createElement("span");
+    badge.className = "badge";
+    badge.textContent = (c.speed !== 1 ? c.speed + "x · " : "") + clipDur(c).toFixed(1) + "s";
+    d.appendChild(badge);
+
+    const hl = document.createElement("div"); hl.className = "handle l";
+    const hr = document.createElement("div"); hr.className = "handle r";
+    d.appendChild(hl); d.appendChild(hr);
+    bindTrim(hl, c, "l"); bindTrim(hr, c, "r");
+
+    d.addEventListener("click", ev => {
+      if (ev.target.classList.contains("handle")) return;
+      state.selClip = (state.selClip === c) ? null : c;
+      state.selText = null;
+      renderTimeline();
+    });
+    track.appendChild(d);
+  }
+  const add = document.createElement("button");
+  add.id = "addClipBtn"; add.textContent = "+";
+  add.onclick = () => $("#fileVideo").click();
+  track.appendChild(add);
+
+  // müzik şeridi
+  const mb = $("#musicBar");
+  if (state.music) {
+    mb.style.display = "block";
+    mb.style.left = "0px";
+    mb.style.width = Math.min(state.music.el.duration || total, total) * state.pps + "px";
+    mb.textContent = "🎵 " + state.music.name;
+  } else mb.style.display = "none";
+
+  $("#btnUndoDel").disabled = !state.selClip && !state.clips.length;
+  document.querySelectorAll(".tool.needsel").forEach(b =>
+    b.classList.toggle("disabled", !state.clips.length));
+}
+
+function renderAll() { renderTimeline(); scrollToTime(true); }
+
+/* kırpma tutamaçları */
+function bindTrim(handle, clip, side) {
+  handle.addEventListener("pointerdown", e => {
+    e.preventDefault(); e.stopPropagation();
+    handle.setPointerCapture(e.pointerId);
+    const startX = e.clientX;
+    const orig = { in: clip.in, out: clip.out };
+    const move = ev => {
+      const dxSec = (ev.clientX - startX) / state.pps * clip.speed;
+      if (side === "l") {
+        clip.in = Math.min(Math.max(orig.in + dxSec, 0), clip.out - .15);
+      } else {
+        const maxOut = clip.type === "image" ? 30 : clip.natDur;
+        clip.out = Math.min(Math.max(orig.out + dxSec, clip.in + .15), maxOut);
+      }
+      renderTimeline();
+      seekTo(Math.min(state.t, totalDur()));
+    };
+    const up = () => {
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", up);
+      renderAll();
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", up);
+  });
+}
+
+/* ---------- yakınlaştırma ---------- */
+$("#btnZoomIn").onclick = () => { state.pps = Math.min(state.pps * 1.4, 240); renderAll(); };
+$("#btnZoomOut").onclick = () => { state.pps = Math.max(state.pps / 1.4, 16); renderAll(); };
+
+/* ---------- klip silme ---------- */
+$("#btnUndoDel").onclick = () => {
+  const c = targetClip();
+  if (!c) return;
+  state.clips.splice(state.clips.indexOf(c), 1);
+  state.selClip = null;
+  if (!state.clips.length) {
+    $("#emptyState").style.display = "flex";
+    $("#btnExport").disabled = true;
+    state.t = 0;
+  } else seekTo(Math.min(state.t, totalDur()), true);
+  renderAll();
+  toast("Klip silindi");
+};
+
+/* ---------- araç çubuğu ---------- */
+document.querySelectorAll("#toolbar .tool").forEach(btn => {
+  btn.addEventListener("click", () => handleTool(btn.dataset.tool));
+});
+
+function handleTool(tool) {
+  switch (tool) {
+    case "add": $("#fileVideo").click(); break;
+    case "split": splitAtPlayhead(); break;
+    case "duplicate": duplicateClip(); break;
+    case "speed": openSpeedSheet(); break;
+    case "volume": openVolumeSheet(); break;
+    case "filter": openFilterSheet(); break;
+    case "adjust": openAdjustSheet(); break;
+    case "text": openTextSheet(state.selText); break;
+    case "music": openMusicSheet(); break;
+    case "aspect": openAspectSheet(); break;
+  }
+}
+
+function splitAtPlayhead() {
+  const loc = locate(state.t);
+  if (!loc) return;
+  const c = loc.clip;
+  const srcT = c.in + loc.offset * c.speed;
+  if (srcT - c.in < .15 || c.out - srcT < .15) { toast("Bölmek için oynatma çubuğunu klibin ortasına getir"); return; }
+  const right = { ...c, id: idSeq++, adjust: { ...c.adjust }, in: srcT };
+  c.out = srcT;
+  state.clips.splice(state.clips.indexOf(c) + 1, 0, right);
+  state.selClip = c;
+  renderAll();
+  toast("Klip bölündü");
+}
+
+function duplicateClip() {
+  const c = targetClip();
+  if (!c) return;
+  let el = c.el;
+  if (c.type === "video") {
+    el = document.createElement("video");
+    el.src = c.url; el.preload = "auto";
+    el.playsInline = true; el.setAttribute("playsinline", "");
+  }
+  const copy = { ...c, id: idSeq++, el, adjust: { ...c.adjust } };
+  state.clips.splice(state.clips.indexOf(c) + 1, 0, copy);
+  renderAll();
+  toast("Klip kopyalandı");
+}
+
+/* ---------- bottom sheet altyapısı ---------- */
+const sheet = $("#sheet");
+function openSheet(title, buildFn) {
+  $("#sheetTitle").textContent = title;
+  const body = $("#sheetBody");
+  body.innerHTML = "";
+  buildFn(body);
+  sheet.classList.add("open");
+}
+$("#sheetClose").onclick = () => sheet.classList.remove("open");
+
+function sliderRow(body, label, min, max, step, val, fmtFn, onInput) {
+  const row = document.createElement("div");
+  row.className = "row";
+  row.innerHTML = `<label>${label}</label><input type="range" min="${min}" max="${max}" step="${step}" value="${val}"><span class="val"></span>`;
+  const inp = row.querySelector("input"), out = row.querySelector(".val");
+  out.textContent = fmtFn(val);
+  inp.oninput = () => { const v = parseFloat(inp.value); out.textContent = fmtFn(v); onInput(v); };
+  body.appendChild(row);
+  return inp;
+}
+
+/* ---------- Hız ---------- */
+function openSpeedSheet() {
+  const c = targetClip(); if (!c) return;
+  openSheet("Hız", body => {
+    const chips = document.createElement("div");
+    chips.className = "chips";
+    [0.25, 0.5, 0.75, 1, 1.5, 2, 3].forEach(s => {
+      const b = document.createElement("button");
+      b.className = "chip" + (c.speed === s ? " sel" : "");
+      b.textContent = s + "x";
+      b.onclick = () => {
+        c.speed = s;
+        chips.querySelectorAll(".chip").forEach(x => x.classList.remove("sel"));
+        b.classList.add("sel");
+        renderAll();
+      };
+      chips.appendChild(b);
+    });
+    body.appendChild(chips);
+  });
+}
+
+/* ---------- Ses ---------- */
+function openVolumeSheet() {
+  const c = targetClip(); if (!c) return;
+  openSheet("Klip Sesi", body => {
+    sliderRow(body, "Ses", 0, 2, .05, c.volume, v => Math.round(v * 100) + "%", v => c.volume = Math.min(v, 1) /* element volume 0-1 */);
+  });
+}
+
+/* ---------- Filtre ---------- */
+function openFilterSheet() {
+  const c = targetClip(); if (!c) return;
+  openSheet("Filtre", body => {
+    const grid = document.createElement("div");
+    grid.className = "filterGrid";
+    for (const [key, f] of Object.entries(FILTERS)) {
+      const it = document.createElement("button");
+      it.className = "fItem" + (c.filter === key ? " sel" : "");
+      it.innerHTML = `<span class="sw" style="filter:${f.css || "none"}"></span><span class="nm">${f.name}</span>`;
+      it.onclick = () => {
+        c.filter = key;
+        grid.querySelectorAll(".fItem").forEach(x => x.classList.remove("sel"));
+        it.classList.add("sel");
+        drawFrame();
+      };
+      grid.appendChild(it);
+    }
+    body.appendChild(grid);
+  });
+}
+
+/* ---------- Ayarla ---------- */
+function openAdjustSheet() {
+  const c = targetClip(); if (!c) return;
+  openSheet("Ayarla", body => {
+    const pct = v => Math.round(v * 100) + "%";
+    sliderRow(body, "Parlaklık", .4, 1.8, .02, c.adjust.b, pct, v => c.adjust.b = v);
+    sliderRow(body, "Kontrast",  .4, 1.8, .02, c.adjust.c, pct, v => c.adjust.c = v);
+    sliderRow(body, "Doygunluk", 0, 2, .02, c.adjust.s, pct, v => c.adjust.s = v);
+    const reset = document.createElement("button");
+    reset.className = "sheetBtn";
+    reset.textContent = "Sıfırla";
+    reset.onclick = () => { c.adjust = { b: 1, c: 1, s: 1 }; openAdjustSheet(); };
+    body.appendChild(reset);
+  });
+}
+
+/* ---------- Metin ---------- */
+function openTextSheet(existing) {
+  const isNew = !existing;
+  const tx = existing || {
+    id: idSeq++, content: "Metin", start: state.t, dur: 3,
+    x: .5, y: .5, size: .06, color: "#ffffff", bg: true,
+  };
+  openSheet(isNew ? "Metin Ekle" : "Metni Düzenle", body => {
+    const ta = document.createElement("textarea");
+    ta.id = "textInput"; ta.value = tx.content;
+    ta.oninput = () => { tx.content = ta.value || " "; drawFrame(); renderTimeline(); };
+    body.appendChild(ta);
+
+    sliderRow(body, "Boyut", .03, .16, .005, tx.size, v => Math.round(v * 100), v => { tx.size = v; drawFrame(); });
+    sliderRow(body, "Süre", .5, 15, .5, tx.dur, v => v + "s", v => { tx.dur = v; renderTimeline(); });
+
+    const cr = document.createElement("div");
+    cr.className = "colorRow";
+    TEXT_COLORS.forEach(col => {
+      const d = document.createElement("button");
+      d.className = "colorDot" + (tx.color === col ? " sel" : "");
+      d.style.background = col;
+      d.onclick = () => {
+        tx.color = col;
+        cr.querySelectorAll(".colorDot").forEach(x => x.classList.remove("sel"));
+        d.classList.add("sel");
+        drawFrame();
+      };
+      cr.appendChild(d);
+    });
+    body.appendChild(cr);
+
+    const bgBtn = document.createElement("button");
+    bgBtn.className = "sheetBtn";
+    const bgLabel = () => "Arka plan: " + (tx.bg ? "Açık" : "Kapalı");
+    bgBtn.textContent = bgLabel();
+    bgBtn.onclick = () => { tx.bg = !tx.bg; bgBtn.textContent = bgLabel(); drawFrame(); };
+    body.appendChild(bgBtn);
+
+    if (isNew) {
+      const addBtn = document.createElement("button");
+      addBtn.className = "sheetBtn primary";
+      addBtn.textContent = "Metni Ekle";
+      addBtn.onclick = () => {
+        state.texts.push(tx);
+        state.selText = tx;
+        sheet.classList.remove("open");
+        renderTimeline(); drawFrame();
+        toast("Metin eklendi — sürükleyerek taşıyabilirsin");
+      };
+      body.appendChild(addBtn);
+    } else {
+      const del = document.createElement("button");
+      del.className = "sheetBtn danger";
+      del.textContent = "Metni Sil";
+      del.onclick = () => {
+        state.texts = state.texts.filter(t => t !== tx);
+        if (state.selText === tx) state.selText = null;
+        sheet.classList.remove("open");
+        renderTimeline(); drawFrame();
+      };
+      body.appendChild(del);
+    }
+  });
+  if (isNew) state.selText = null;
+  drawFrame();
+}
+
+/* metin seçme / sürükleme (önizleme üzerinde) */
+const textDrag = { active: null, moved: false };
+function canvasPoint(e) {
+  const r = canvas.getBoundingClientRect();
+  return { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height };
+}
+function pickText(e) {
+  const p = canvasPoint(e);
+  for (let i = state.texts.length - 1; i >= 0; i--) {
+    const tx = state.texts[i];
+    if (state.t < tx.start || state.t > tx.start + tx.dur) continue;
+    const h = tx.size * 1.6, w = Math.max(tx.content.length * tx.size * .35, .1);
+    if (Math.abs(p.x - tx.x) < w / 2 + .03 && Math.abs(p.y - tx.y) < h / 2 + .03) return tx;
+  }
+  return null;
+}
+canvas.addEventListener("pointerdown", e => {
+  const hit = pickText(e);
+  textDrag.moved = false;
+  if (hit) {
+    textDrag.active = hit;
+    state.selText = hit;
+    canvas.setPointerCapture(e.pointerId);
+    drawFrame();
+  }
+});
+canvas.addEventListener("pointermove", e => {
+  if (!textDrag.active) return;
+  const p = canvasPoint(e);
+  textDrag.active.x = Math.min(Math.max(p.x, .03), .97);
+  textDrag.active.y = Math.min(Math.max(p.y, .03), .97);
+  textDrag.moved = true;
+  drawFrame();
+});
+canvas.addEventListener("pointerup", () => { textDrag.active = null; });
+
+/* ---------- Müzik ---------- */
+function openMusicSheet() {
+  openSheet("Müzik", body => {
+    if (!state.music) {
+      const add = document.createElement("button");
+      add.className = "sheetBtn primary";
+      add.textContent = "🎵 Müzik Dosyası Seç";
+      add.onclick = () => $("#fileMusic").click();
+      body.appendChild(add);
+      const hint = document.createElement("p");
+      hint.style.cssText = "font-size:12px;color:var(--dim);text-align:center;margin-top:6px";
+      hint.textContent = "MP3, M4A, WAV… cihazından bir ses dosyası ekle.";
+      body.appendChild(hint);
+    } else {
+      const nm = document.createElement("p");
+      nm.style.cssText = "font-size:13px;margin-bottom:4px";
+      nm.textContent = "🎵 " + state.music.name;
+      body.appendChild(nm);
+      sliderRow(body, "Ses", 0, 1, .05, state.music.volume, v => Math.round(v * 100) + "%", v => state.music.volume = v);
+      const del = document.createElement("button");
+      del.className = "sheetBtn danger";
+      del.textContent = "Müziği Kaldır";
+      del.onclick = () => {
+        state.music.el.pause();
+        state.music = null;
+        sheet.classList.remove("open");
+        renderTimeline();
+      };
+      body.appendChild(del);
+    }
+  });
+}
+$("#fileMusic").onchange = e => {
+  const f = e.target.files[0];
+  e.target.value = "";
+  if (!f) return;
+  const url = URL.createObjectURL(f);
+  const a = new Audio(url);
+  a.preload = "auto";
+  state.music = { url, name: f.name, el: a, volume: .8 };
+  sheet.classList.remove("open");
+  renderTimeline();
+  toast("Müzik eklendi");
+};
+
+/* ---------- Oran ---------- */
+function openAspectSheet() {
+  openSheet("En-Boy Oranı", body => {
+    const chips = document.createElement("div");
+    chips.className = "chips";
+    Object.keys(ASPECTS).forEach(k => {
+      const b = document.createElement("button");
+      b.className = "chip" + (state.aspect === k ? " sel" : "");
+      b.textContent = k;
+      b.onclick = () => {
+        state.aspect = k;
+        chips.querySelectorAll(".chip").forEach(x => x.classList.remove("sel"));
+        b.classList.add("sel");
+        applyAspect();
+      };
+      chips.appendChild(b);
+    });
+    body.appendChild(chips);
+  });
+}
+function applyAspect() {
+  const [w, h] = ASPECTS[state.aspect];
+  canvas.width = w; canvas.height = h;
+  fitPreview();
+  drawFrame();
+}
+function fitPreview() {
+  const wrap = $("#previewWrap");
+  const availW = wrap.clientWidth - 16, availH = wrap.clientHeight - 16;
+  const ar = canvas.width / canvas.height;
+  let w = availW, h = w / ar;
+  if (h > availH) { h = availH; w = h * ar; }
+  const box = $("#previewBox");
+  box.style.width = w + "px";
+  box.style.height = h + "px";
+}
+window.addEventListener("resize", () => { fitPreview(); renderTimeline(); scrollToTime(true); });
+
+/* ---------- Dışa aktarma ---------- */
+let audioCtx = null, exportAbort = false, recorder = null;
+const srcNodes = new Map();
+
+function getSource(el) {
+  if (!srcNodes.has(el)) srcNodes.set(el, audioCtx.createMediaElementSource(el));
+  return srcNodes.get(el);
+}
+
+$("#btnExport").onclick = startExport;
+$("#modalCancel").onclick = () => {
+  exportAbort = true;
+  if (recorder && recorder.state !== "inactive") recorder.stop();
+  $("#modal").classList.remove("open");
+  pause();
+};
+
+async function startExport() {
+  if (!state.clips.length) return;
+  pause();
+  exportAbort = false;
+
+  const mimes = [
+    "video/webm;codecs=vp9,opus",
+    "video/webm;codecs=vp8,opus",
+    "video/webm",
+    "video/mp4",
+  ];
+  const mime = mimes.find(m => window.MediaRecorder && MediaRecorder.isTypeSupported(m));
+  if (!mime) { toast("Bu tarayıcı video kaydını desteklemiyor"); return; }
+  const ext = mime.startsWith("video/mp4") ? "mp4" : "webm";
+
+  // ses miksajı
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    await audioCtx.resume();
+  } catch (_) { audioCtx = null; }
+
+  const canvasStream = canvas.captureStream(30);
+  let stream = canvasStream;
+  if (audioCtx) {
+    const dest = audioCtx.createMediaStreamDestination();
+    const master = audioCtx.createGain();
+    master.connect(audioCtx.destination);
+    master.connect(dest);
+    const els = state.clips.filter(c => c.type === "video").map(c => c.el);
+    if (state.music) els.push(state.music.el);
+    for (const el of new Set(els)) {
+      try { getSource(el).disconnect(); } catch (_) {}
+      try { getSource(el).connect(master); } catch (_) {}
+    }
+    stream = new MediaStream([...canvasStream.getVideoTracks(), ...dest.stream.getAudioTracks()]);
+  }
+
+  const chunks = [];
+  recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 6_000_000 });
+  recorder.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+
+  const modal = $("#modal");
+  $("#modalTitle").textContent = "Dışa aktarılıyor…";
+  $("#modalDesc").textContent = "Video gerçek zamanlı işleniyor, sekmeyi kapatma.";
+  $("#dlLink").style.display = "none";
+  $("#modalCancel").style.display = "block";
+  $("#progressInner").style.width = "0%";
+  modal.classList.add("open");
+
+  const done = new Promise(res => recorder.onstop = res);
+  seekTo(0, true);
+  await new Promise(r => setTimeout(r, 250)); // ilk kare otursun
+  recorder.start(500);
+  play();
+
+  const total = totalDur();
+  await new Promise(res => {
+    const iv = setInterval(() => {
+      $("#progressInner").style.width = Math.min(state.t / total * 100, 100) + "%";
+      if (exportAbort || (!state.playing && state.t >= total - .05)) {
+        clearInterval(iv);
+        res();
+      }
+    }, 120);
+  });
+
+  if (recorder.state !== "inactive") recorder.stop();
+  await done;
+  pause();
+
+  if (exportAbort) return;
+
+  const blob = new Blob(chunks, { type: mime.split(";")[0] });
+  const url = URL.createObjectURL(blob);
+  const dl = $("#dlLink");
+  dl.href = url;
+  dl.download = "pisan-cut-" + Date.now() + "." + ext;
+  dl.style.display = "block";
+  $("#modalTitle").textContent = "Hazır! 🎉";
+  $("#modalDesc").textContent = "Videon (" + (blob.size / 1048576).toFixed(1) + " MB) indirilmeye hazır.";
+  $("#modalCancel").style.display = "block";
+  $("#modalCancel").textContent = "Kapat";
+  $("#progressInner").style.width = "100%";
+}
+
+/* ---------- başlangıç ---------- */
+applyAspect();
+renderAll();
+</script>
+</body>
+</html>
