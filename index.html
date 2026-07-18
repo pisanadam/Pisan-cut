@@ -472,12 +472,15 @@
 const $ = s => document.querySelector(s);
 const canvas = $("#canvas"), ctx = canvas.getContext("2d");
 
+/* en-boy oranları (oran olarak; gerçek boyut çözünürlük seçimiyle hesaplanır) */
 const ASPECTS = {
-  "9:16": [720, 1280],
-  "16:9": [1280, 720],
-  "1:1":  [1080, 1080],
-  "4:5":  [864, 1080],
+  "9:16": [9, 16],
+  "16:9": [16, 9],
+  "1:1":  [1, 1],
+  "4:5":  [4, 5],
 };
+const RES_OPTS = { 480: "480p", 720: "720p", 1080: "1080p" };
+const FPS_OPTS = { 24: "24 fps", 30: "30 fps", 60: "60 fps" };
 
 const FILTERS = {
   none:    { name: "Orijinal", css: "" },
@@ -542,6 +545,8 @@ const state = {
   selOv: null,
   projectId: null,
   projectName: "",
+  resolution: 720,   // kısa kenar (480/720/1080)
+  fps: 30,
   exportW: 720,
   exportH: 1280,
   rendering: false,
@@ -1849,8 +1854,21 @@ function openAspectSheet() {
     body.appendChild(chips);
   });
 }
+/* seçilen oran + çözünürlükten çift sayıya yuvarlanmış piksel boyutu */
+function exportDims() {
+  const [rw, rh] = ASPECTS[state.aspect];
+  const res = state.resolution;
+  const even = v => Math.round(v / 2) * 2;
+  return rw <= rh
+    ? [even(res), even(res * rh / rw)]
+    : [even(res * rw / rh), even(res)];
+}
+/* çözünürlük ve fps'e göre video bit hızı (~0.22 bit/piksel/kare) */
+function exportBitrate() {
+  return Math.min(Math.round(state.exportW * state.exportH * state.fps * .22), 16_000_000);
+}
 function applyAspect() {
-  const [w, h] = ASPECTS[state.aspect];
+  const [w, h] = exportDims();
   state.exportW = w; state.exportH = h;
   fitPreview();
   setCanvasResolution(false);
@@ -1905,7 +1923,38 @@ function getSource(el) {
   return srcNodes.get(el);
 }
 
-$("#btnExport").onclick = startExport;
+/* dışa aktarma ayarları paneli (çözünürlük + kare hızı) */
+$("#btnExport").onclick = () => {
+  if (!state.clips.length) return;
+  pause();
+  openSheet("Dışa Aktar", body => {
+    subhead(body, "Çözünürlük");
+    chipRow(body, RES_OPTS, String(state.resolution), k => {
+      state.resolution = parseInt(k);
+      applyAspect();
+      updEst();
+    });
+    subhead(body, "Kare Hızı");
+    chipRow(body, FPS_OPTS, String(state.fps), k => {
+      state.fps = parseInt(k);
+      updEst();
+    });
+    const est = document.createElement("p");
+    est.style.cssText = "font-size:12px;color:var(--dim);text-align:center;margin:14px 0 4px";
+    body.appendChild(est);
+    const updEst = () => {
+      const [w, h] = exportDims();
+      const mb = (exportBitrate() + 128000) / 8 * totalDur() / 1048576;
+      est.textContent = `${w}×${h} · ${state.fps} fps · tahmini ~${mb.toFixed(1)} MB`;
+    };
+    updEst();
+    const go = document.createElement("button");
+    go.className = "sheetBtn primary";
+    go.textContent = "🚀 Dışa Aktar";
+    go.onclick = () => { sheet.classList.remove("open"); startExport(); };
+    body.appendChild(go);
+  });
+};
 $("#modalCancel").onclick = () => {
   exportAbort = true;
   if (recorder && recorder.state !== "inactive") recorder.stop();
@@ -2195,7 +2244,7 @@ const OPUS_HEAD_DEFAULT = (() => {
 /* ---------- hızlı render (kare kare, offline) ---------- */
 async function fastRender(codec, withAudio) {
   const total = totalDur();
-  const fps = 30;
+  const fps = state.fps;
   const frames = Math.max(Math.ceil(total * fps), 1);
   exportModal("Render alınıyor…", "Kare kare işleniyor — takılma olmadan, tam kalitede.");
 
@@ -2265,7 +2314,7 @@ async function fastRender(codec, withAudio) {
   });
   venc.configure({
     codec, width: state.exportW, height: state.exportH,
-    bitrate: 6_000_000, framerate: fps,
+    bitrate: exportBitrate(), framerate: fps,
   });
 
   for (let i = 0; i < frames; i++) {
@@ -2278,7 +2327,7 @@ async function fastRender(codec, withAudio) {
       timestamp: Math.round(i * 1e6 / fps),
       duration: Math.round(1e6 / fps),
     });
-    venc.encode(frame, { keyFrame: i % 150 === 0 });
+    venc.encode(frame, { keyFrame: i % (fps * 5) === 0 });
     frame.close();
     /* kodlayıcı kuyruğu şişmesin */
     while (venc.encodeQueueSize > 4) await new Promise(r => setTimeout(r, 4));
@@ -2315,7 +2364,7 @@ async function realtimeExport() {
     await audioCtx.resume();
   } catch (_) { audioCtx = null; }
 
-  const canvasStream = canvas.captureStream(30);
+  const canvasStream = canvas.captureStream(state.fps);
   let stream = canvasStream;
   if (audioCtx) {
     const dest = audioCtx.createMediaStreamDestination();
@@ -2332,7 +2381,7 @@ async function realtimeExport() {
   }
 
   const chunks = [];
-  recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 6_000_000 });
+  recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: exportBitrate() });
   recorder.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
 
   exportModal("Dışa aktarılıyor…", "Video gerçek zamanlı işleniyor, sekmeyi kapatma.");
@@ -2369,6 +2418,8 @@ async function realtimeExport() {
 function projectData() {
   return {
     aspect: state.aspect,
+    resolution: state.resolution,
+    fps: state.fps,
     clips: state.clips.map(c => ({
       mediaId: c.mediaId, type: c.type, name: c.name, natDur: c.natDur,
       in: c.in, out: c.out, speed: c.speed, volume: c.volume,
@@ -2419,6 +2470,9 @@ async function newProject(tool) {
   const all = await idbAll("projects").catch(() => []);
   state.projectName = "Proje " + (all.length + 1);
   state.aspect = "9:16";
+  state.resolution = 720;
+  state.fps = 30;
+  applyAspect();
   pendingTool = tool || null;
   enterEditor();
   $("#fileVideo").click();
@@ -2429,6 +2483,9 @@ async function openProject(rec) {
   state.projectId = rec.id;
   state.projectName = rec.name;
   state.aspect = rec.data.aspect || "9:16";
+  state.resolution = rec.data.resolution || 720;
+  state.fps = rec.data.fps || 30;
+  applyAspect();
   toast("Proje açılıyor…");
   for (const cd of rec.data.clips) {
     const m = await idbGet("media", cd.mediaId).catch(() => null);
