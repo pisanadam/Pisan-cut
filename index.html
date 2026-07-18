@@ -526,8 +526,8 @@ const ASPECTS = {
   "1:1":  [1, 1],
   "4:5":  [4, 5],
 };
-const RES_OPTS = { 480: "480p", 720: "720p", 1080: "1080p" };
-const FPS_OPTS = { 24: "24 fps", 30: "30 fps", 60: "60 fps" };
+const RES_OPTS = { 480: "480p", 720: "720p", 1080: "1080p", 1440: "2K β", 2160: "4K β" };
+const FPS_OPTS = { 24: "24 fps", 30: "30 fps", 60: "60 fps", 90: "90 fps β", 120: "120 fps β" };
 
 const FILTERS = {
   none:    { name: "Orijinal", css: "" },
@@ -1380,14 +1380,20 @@ function openOverlaySheet(o) {
   else openPipSheet(o);
 }
 
+let selHintShown = false;
 function handleTap(e) {
   const hit = pickOverlay(e);
   if (hit) {
     if (state.selOv === hit) openOverlaySheet(hit);
-    else { state.selOv = hit; renderTimeline(); }
+    else {
+      state.selOv = hit; state.selClip = null;
+      renderTimeline();
+      if (!selHintShown) { selHintShown = true; toast("Seçildi — şimdi sürükleyip boyutlandırabilirsin"); }
+    }
     return;
   }
   if (state.selOv) { state.selOv = null; renderTimeline(); return; }
+  if (state.selClip) { state.selClip = null; renderTimeline(); return; }
   state.playing ? pause() : play();
   const ov = $("#playOverlay");
   ov.classList.add("show");
@@ -2388,11 +2394,16 @@ canvas.addEventListener("pointerdown", e => {
     gesture.moved = false;
     const hit = pickOverlay(e);
     if (hit) {
-      gesture.target = hit; gesture.kind = "overlay";
-      if (state.selOv !== hit) { state.selOv = hit; renderTimeline(); }
+      /* önce seç, sonra sürükle: öğe seçili değilse bu jest yalnızca
+         dokunma sayılır (handleTap seçer), taşımaz */
+      gesture.target = state.selOv === hit ? hit : null;
+      gesture.kind = gesture.target ? "overlay" : null;
     } else {
+      /* ana klip de ancak seçiliyken (zaman çizelgesinden dokunup)
+         önizlemede taşınıp yakınlaştırılabilir */
       const loc = locate(state.t);
-      gesture.target = loc ? loc.clip : null;
+      const c = loc ? loc.clip : null;
+      gesture.target = c && state.selClip === c ? c : null;
       gesture.kind = gesture.target ? "clip" : null;
     }
     if (gesture.target) pushHistory();
@@ -2769,7 +2780,7 @@ function exportDims() {
 }
 /* çözünürlük ve fps'e göre video bit hızı (~0.22 bit/piksel/kare) */
 function exportBitrate() {
-  return Math.min(Math.round(state.exportW * state.exportH * state.fps * .22), 16_000_000);
+  return Math.min(Math.round(state.exportW * state.exportH * state.fps * .22), 45_000_000);
 }
 function applyAspect() {
   const [w, h] = exportDims();
@@ -2843,6 +2854,10 @@ $("#btnExport").onclick = () => {
       state.fps = parseInt(k);
       updEst();
     });
+    const beta = document.createElement("p");
+    beta.style.cssText = "font-size:10px;color:var(--dim);margin:10px 0 0";
+    beta.textContent = "β Beta: 2K/4K ve 90/120 fps bazı telefonlarda stabil çalışmayabilir; sorun olursa 1080p/60 fps ve altını kullan.";
+    body.appendChild(beta);
     const est = document.createElement("p");
     est.style.cssText = "font-size:12px;color:var(--dim);text-align:center;margin:14px 0 4px";
     body.appendChild(est);

@@ -20,7 +20,7 @@ Ayarlar → Pages → dalı seç → yayınla.
 - ⇄ **Geçişler**: Klipler arasında Solma, Siyah/Beyaz, Kaydırma, Silme, Yakınlaşma — süre ayarlı; zaman çizelgesindeki sınır düğmesinden eklenir
 - ✨ **Efektler (CapCut tarzı panel)**: Arama + kategori sekmeleri (Trend / Atmosfer / Retro / Hareket); Arızalı Sinyal, Konfeti, Parıltı, VHS, Kalpler, Kar, Yağmur, Vinyet, Film Greni, Negatif Renk, Kamera Hareketi, Nabız, Titrek Aksama
 - 🖼 **Bindirme (PiP)**: Video/fotoğrafı katman olarak üstüne ekle — sesi mikslenir, süresi ve konumu ayarlanır
-- 🤏 **Dokunmatik dönüşüm**: Ana klip, metin, obje ve bindirmeleri tek parmakla taşı, iki parmakla yakınlaştır/boyutlandır; sürüklerken merkez mıknatısı (kılavuz çizgisiyle ortaya yapışma) ve panellerde "Tam Ortala / Yatay / Dikey" düğmeleri
+- 🤏 **Dokunmatik dönüşüm**: Önce dokunup seç, sonra tek parmakla taşı, iki parmakla yakınlaştır/boyutlandır (yanlışlıkla kaydırmayı önler; ana klip zaman çizelgesinden seçilir); sürüklerken merkez mıknatısı (kılavuz çizgisiyle ortaya yapışma) ve panellerde "Tam Ortala / Yatay / Dikey" düğmeleri
 - 🗂 **Katmanlar**: Üst üste binen öğelerde "öne getir / arkaya gönder" ile sıralama
 - ↔️ **Çubuk sürükleme**: Zaman çizelgesinde metin/obje/bindirme çubuklarını ortadan taşı, uçlarından uzat/kısalt
 - ⏩ **Hız**: 0.01x – 10x sürgüyle (logaritmik) + hazır değerler; "ses perdesini değiştir" aç/kapa
@@ -33,7 +33,7 @@ Ayarlar → Pages → dalı seç → yayınla.
 - 📚 **Müzik kütüphaneleri**: Cihazından eklemenin yanında 3 çevrimiçi kaynakta ara, dinle ve tek dokunuşla projeye ekle — İnternet Arşivi (archive.org), Openverse ve iTunes 30 sn önizmeleri; eklenen parçalar projeyle birlikte cihazına kaydedilir
 - ↩️ **Geri al / Yinele**: PC'de Ctrl+Z geri alır, Ctrl+X (veya Ctrl+Y / Ctrl+Shift+Z) yineler; mobilde üst çubuktaki ↩ ↪ düğmeleri — 50 adıma kadar
 - ⬛ **En-boy oranı**: 9:16, 16:9, 1:1, 4:5
-- 🎚️ **Dışa aktarma ayarları**: Çözünürlük (480p / 720p / 1080p) ve kare hızı (24 / 30 / 60 fps) seçimi, tahmini dosya boyutuyla; seçimler projeyle birlikte kaydedilir
+- 🎚️ **Dışa aktarma ayarları**: Çözünürlük (480p / 720p / 1080p / 2K β / 4K β) ve kare hızı (24 / 30 / 60 / 90 β / 120 β fps) seçimi, tahmini dosya boyutuyla; seçimler projeyle birlikte kaydedilir. β işaretli seçenekler beta'dır — bazı telefonlarda stabil çalışmayabilir
 - 📤 **Hızlı render (CapCut tarzı)**: WebCodecs destekleyen tarayıcılarda video kare kare offline kodlanır, ses offline mikslenir — önizleme taksa bile çıktı her zaman akıcıdır ve çoğu cihazda gerçek zamandan hızlı biter. WebCodecs yoksa MediaRecorder ile gerçek zamanlı kayda düşer.
 - ⚡ **Akıcı önizleme**: Düzenleme sırasında canvas ekran çözünürlüğünde çalışır (dışa aktarmada tam çözünürlüğe geçer), kare yalnızca gerektiğinde yeniden çizilir
 
