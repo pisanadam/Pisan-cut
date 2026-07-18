@@ -18,7 +18,7 @@ Ayarlar → Pages → dalı seç → yayınla.
 - ⇄ **Geçişler**: Klipler arasında Solma, Siyah/Beyaz, Kaydırma, Silme, Yakınlaşma — süre ayarlı; zaman çizelgesindeki sınır düğmesinden eklenir
 - ✨ **Efektler (CapCut tarzı panel)**: Arama + kategori sekmeleri (Trend / Atmosfer / Retro / Hareket); Arızalı Sinyal, Konfeti, Parıltı, VHS, Kalpler, Kar, Yağmur, Vinyet, Film Greni, Negatif Renk, Kamera Hareketi, Nabız, Titrek Aksama
 - 🖼 **Bindirme (PiP)**: Video/fotoğrafı katman olarak üstüne ekle — sesi mikslenir, süresi ve konumu ayarlanır
-- 🤏 **Dokunmatik dönüşüm**: Ana klip, metin, obje ve bindirmeleri tek parmakla taşı, iki parmakla yakınlaştır/boyutlandır
+- 🤏 **Dokunmatik dönüşüm**: Ana klip, metin, obje ve bindirmeleri tek parmakla taşı, iki parmakla yakınlaştır/boyutlandır; sürüklerken merkez mıknatısı (kılavuz çizgisiyle ortaya yapışma) ve panellerde "Tam Ortala / Yatay / Dikey" düğmeleri
 - 🗂 **Katmanlar**: Üst üste binen öğelerde "öne getir / arkaya gönder" ile sıralama
 - ↔️ **Çubuk sürükleme**: Zaman çizelgesinde metin/obje/bindirme çubuklarını ortadan taşı, uçlarından uzat/kısalt
 - ⏩ **Hız**: 0.01x – 10x sürgüyle (logaritmik) + hazır değerler; "ses perdesini değiştir" aç/kapa
@@ -36,7 +36,7 @@ Ayarlar → Pages → dalı seç → yayınla.
 ## Nasıl çalışıyor?
 
 - Önizleme ve dışa aktarma tek bir `<canvas>` üzerinden çizilir; filtreler CSS filter, metinler canvas metni olarak işlenir.
-- **Hızlı render**: her kare için videolar tam zamana sarılır, kare `VideoEncoder` (VP9/VP8) ile kodlanır; ses `OfflineAudioContext` ile mikslenip `AudioEncoder` (Opus) ile kodlanır ve dosya içindeki minimal Matroska/WebM muxer ile birleştirilir. Kare düşmesi mümkün değildir.
+- **Hızlı render**: her kare için videolar tam zamana sarılır, kare `VideoEncoder` (VP9/VP8) ile kodlanır; ses `OfflineAudioContext` ile mikslenip `AudioEncoder` (Opus) ile kodlanır ve dosya içindeki minimal Matroska/WebM muxer ile birleştirilir. Kare düşmesi mümkün değildir. Her klip için ikinci bir "gölge" video elemanı tutulur: bir kare kodlanırken sıradaki karenin sarması paralel yürür (çift tampon), bu render süresini belirgin kısaltır.
 - WebCodecs olmayan tarayıcılarda `canvas.captureStream()` + `MediaRecorder` ile gerçek zamanlı kayda düşülür.
 
 ## Sınırlamalar

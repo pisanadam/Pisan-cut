@@ -503,7 +503,7 @@
    ========================================================= */
 
 const $ = s => document.querySelector(s);
-const canvas = $("#canvas"), ctx = canvas.getContext("2d");
+const canvas = $("#canvas"), ctx = canvas.getContext("2d", { alpha: false });
 
 /* en-boy oranları (oran olarak; gerçek boyut çözünürlük seçimiyle hesaplanır) */
 const ASPECTS = {
@@ -1177,6 +1177,17 @@ function drawFrame() {
     drawEffectOverlay(c);
   }
   for (const o of state.overlays) drawOverlayItem(o);
+  /* sürüklerken merkez kılavuz çizgileri */
+  if (!state.rendering && gesture.target && (gesture.snapX || gesture.snapY)) {
+    ctx.strokeStyle = "rgba(45,212,191,.9)";
+    ctx.lineWidth = Math.max(1.5, fxScale() * 1.5);
+    ctx.setLineDash([8, 6]);
+    ctx.beginPath();
+    if (gesture.snapX) { ctx.moveTo(W / 2, 0); ctx.lineTo(W / 2, H); }
+    if (gesture.snapY) { ctx.moveTo(0, H / 2); ctx.lineTo(W, H / 2); }
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
 }
 
 /* ---------- oynatma motoru ---------- */
@@ -1833,6 +1844,11 @@ function openAdjustSheet() {
     sliderRow(body, "Doygunluk", 0, 2, .02, c.adjust.s, pct, v => { c.adjust.s = v; invalidate(); });
     subhead(body, "Dönüşüm (parmakla da yapılabilir)");
     sliderRow(body, "Yakınlaştır", .2, 5, .05, c.scale || 1, v => v.toFixed(2) + "x", v => { c.scale = v; invalidate(); });
+    const center = document.createElement("button");
+    center.className = "sheetBtn";
+    center.textContent = "⊕ Ortala (konumu sıfırla)";
+    center.onclick = () => { c.tx = 0; c.ty = 0; invalidate(); toast("Ortalandı"); };
+    body.appendChild(center);
     const reset = document.createElement("button");
     reset.className = "sheetBtn";
     reset.textContent = "Sıfırla (renk + konum)";
@@ -2013,6 +2029,21 @@ function moveOverlayZ(o, dir) {
 
 /* metin & obje panellerinin ortak alt düğmeleri */
 function commonOverlayButtons(body, o, isNew, addLabel, delLabel) {
+  /* orana göre ortalama */
+  const cr = document.createElement("div");
+  cr.className = "halfRow";
+  const mkC = (label, fn) => {
+    const b = document.createElement("button");
+    b.className = "sheetBtn";
+    b.textContent = label;
+    b.onclick = () => { fn(); invalidate(); toast("Ortalandı"); };
+    cr.appendChild(b);
+  };
+  mkC("⊕ Tam Ortala", () => { o.x = .5; o.y = .5; });
+  mkC("↔ Yatay", () => o.x = .5);
+  mkC("↕ Dikey", () => o.y = .5);
+  body.appendChild(cr);
+
   if (!isNew) {
     const lr = document.createElement("div");
     lr.className = "halfRow";
@@ -2146,18 +2177,27 @@ canvas.addEventListener("pointermove", e => {
     invalidate();
     return;
   }
-  /* tek parmak: taşı */
+  /* tek parmak: taşı (+ merkez mıknatısı) */
   const p = canvasPoint(e);
   const dx = p.x - gesture.startX, dy = p.y - gesture.startY;
   const r = canvas.getBoundingClientRect();
   if (!gesture.moved && Math.hypot(dx * r.width, dy * r.height) < 6) return;
   gesture.moved = true;
+  gesture.snapX = false; gesture.snapY = false;
   if (gesture.kind === "overlay") {
-    gesture.target.x = clamp(gesture.orig.x + dx, .02, .98);
-    gesture.target.y = clamp(gesture.orig.y + dy, .02, .98);
+    let nx = clamp(gesture.orig.x + dx, .02, .98);
+    let ny = clamp(gesture.orig.y + dy, .02, .98);
+    if (Math.abs(nx - .5) < .022) { nx = .5; gesture.snapX = true; }
+    if (Math.abs(ny - .5) < .022) { ny = .5; gesture.snapY = true; }
+    gesture.target.x = nx;
+    gesture.target.y = ny;
   } else {
-    gesture.target.tx = clamp(gesture.orig.x + dx, -1, 1);
-    gesture.target.ty = clamp(gesture.orig.y + dy, -1, 1);
+    let nx = clamp(gesture.orig.x + dx, -1, 1);
+    let ny = clamp(gesture.orig.y + dy, -1, 1);
+    if (Math.abs(nx) < .022) { nx = 0; gesture.snapX = true; }
+    if (Math.abs(ny) < .022) { ny = 0; gesture.snapY = true; }
+    gesture.target.tx = nx;
+    gesture.target.ty = ny;
   }
   invalidate();
 });
@@ -2167,6 +2207,8 @@ const gestureEnd = e => {
   if (gesture.pts.size === 0) {
     if (!gesture.moved) handleTap(e);
     gesture.target = null; gesture.kind = null;
+    gesture.snapX = false; gesture.snapY = false;
+    invalidate();
   }
 };
 canvas.addEventListener("pointerup", gestureEnd);
@@ -2433,20 +2475,15 @@ function seekVideoExact(v, target) {
   });
 }
 
-/* t anındaki kareyi kesin olarak hazırla (kare kare render için) */
-async function renderSeek(t) {
-  state.t = t;
+/* geçişteki önceki klip + aktif bindirme videolarını kesin kareye sar */
+async function renderSeekExtras(t) {
   const loc = locate(t);
   if (!loc) return;
-  if (loc.clip.type === "video") {
-    await seekVideoExact(loc.clip.el, loc.clip.in + loc.offset * loc.clip.speed);
-  }
   const idx = state.clips.indexOf(loc.clip);
   const prev = idx > 0 ? state.clips[idx - 1] : null;
   if (prev && prev.trans.type !== "none" && (t - clipStart(loc.clip)) < prev.trans.dur && prev.type === "video") {
     await seekVideoExact(prev.el, Math.max(prev.out - .05, prev.in));
   }
-  /* aktif bindirme videoları da kare kare sarılır */
   for (const o of state.overlays) {
     if (o.kind !== "pip" || o.type !== "video") continue;
     if (t < o.start || t > o.start + o.dur) continue;
@@ -2715,23 +2752,53 @@ async function fastRender(codec, withAudio) {
   }
   if (exportAbort) throw new Error("abort");
 
-  /* 2) video: her kareyi kesin zamana sarıp kodla */
+  /* 2) video: her kareyi kesin zamana sarıp kodla.
+     Hızlandırma: her video klip için ikinci bir "gölge" eleman
+     oluşturulur; kare i çizilirken kare i+1'in sarması diğer
+     elemanda paralel yürür (çift tampon). */
   let encError = null;
   const venc = new VideoEncoder({
     output: chunk => muxer.addVideo(chunk),
     error: e => { encError = e; },
   });
-  venc.configure({
+  const vconf = {
     codec, width: state.exportW, height: state.exportH,
     bitrate: exportBitrate(), framerate: fps,
-  });
+  };
+  try { venc.configure({ ...vconf, latencyMode: "realtime" }); }
+  catch (_) { venc.configure(vconf); }
 
+  const shadows = new Map();   // clip -> [asıl el, gölge el]
+  for (const c of state.clips) {
+    if (c.type !== "video") continue;
+    const b = document.createElement("video");
+    b.preload = "auto"; b.muted = true;
+    b.playsInline = true; b.setAttribute("playsinline", "");
+    b.src = c.url;
+    await new Promise(r => { b.onloadedmetadata = r; b.onerror = r; });
+    shadows.set(c, [c.el, b]);
+  }
+  const issueSeek = i => {
+    const t = Math.min(i / fps, Math.max(total - .001, 0));
+    const loc = locate(t);
+    if (!loc || loc.clip.type !== "video") return { t, clip: null, el: null, promise: Promise.resolve() };
+    const el = shadows.get(loc.clip)[i % 2];
+    return { t, clip: loc.clip, el, promise: seekVideoExact(el, loc.clip.in + loc.offset * loc.clip.speed) };
+  };
+
+  let cur = issueSeek(0);
   for (let i = 0; i < frames; i++) {
     if (exportAbort) { venc.close(); throw new Error("abort"); }
     if (encError) { throw encError; }
-    const t = Math.min(i / fps, Math.max(total - .001, 0));
-    await renderSeek(t);
+    const next = i + 1 < frames ? issueSeek(i + 1) : null;   // paralel ön-sarma
+    await cur.promise;
+    state.t = cur.t;
+    await renderSeekExtras(cur.t);
+    /* çizim, sarılmış gölge eleman üzerinden yapılır */
+    let savedEl = null;
+    if (cur.clip) { savedEl = cur.clip.el; cur.clip.el = cur.el; }
     drawFrame();
+    if (cur.clip) cur.clip.el = savedEl;
     const frame = new VideoFrame(canvas, {
       timestamp: Math.round(i * 1e6 / fps),
       duration: Math.round(1e6 / fps),
@@ -2739,14 +2806,16 @@ async function fastRender(codec, withAudio) {
     venc.encode(frame, { keyFrame: i % (fps * 5) === 0 });
     frame.close();
     /* kodlayıcı kuyruğu şişmesin */
-    while (venc.encodeQueueSize > 4) await new Promise(r => setTimeout(r, 4));
+    while (venc.encodeQueueSize > 6 && !encError && !exportAbort) await new Promise(r => setTimeout(r, 2));
     if (i % 5 === 0) {
       $("#progressInner").style.width = (i / frames * 100).toFixed(1) + "%";
       $("#modalDesc").textContent = `Kare ${i + 1} / ${frames}`;
     }
+    cur = next;
   }
   await venc.flush();
   venc.close();
+  for (const [, pair] of shadows) { pair[1].removeAttribute("src"); pair[1].load(); }
   if (exportAbort) throw new Error("abort");
 
   const blob = muxer.finish({ hasAudio: audioIncluded, opusHead });
