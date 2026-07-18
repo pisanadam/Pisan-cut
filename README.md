@@ -21,7 +21,7 @@ Ayarlar → Pages → dalı seç → yayınla.
 - ✨ **Efektler (CapCut tarzı panel)**: Arama + kategori sekmeleri (Trend / Atmosfer / Retro / Hareket); Arızalı Sinyal, Konfeti, Parıltı, VHS, Kalpler, Kar, Yağmur, Vinyet, Film Greni, Negatif Renk, Kamera Hareketi, Nabız, Titrek Aksama
 - 🖼 **Bindirme (PiP)**: Video/fotoğrafı katman olarak üstüne ekle — sesi mikslenir, süresi ve konumu ayarlanır
 - 🤏 **Dokunmatik dönüşüm**: Önce dokunup seç, sonra tek parmakla taşı, iki parmakla yakınlaştır/boyutlandır (yanlışlıkla kaydırmayı önler; ana klip zaman çizelgesinden seçilir); sürüklerken merkez mıknatısı (kılavuz çizgisiyle ortaya yapışma) ve panellerde "Tam Ortala / Yatay / Dikey" düğmeleri
-- 🗂 **Katmanlar**: Üst üste binen öğelerde "öne getir / arkaya gönder" ile sıralama
+- 🗂 **Katmanlar**: Üst üste binen öğelerde "öne getir / arkaya gönder" ile sıralama; birden çok bindirme ve müzik eklenebilir — zamanda çakışan çubuklar zaman çizelgesinde otomatik olarak ayrı katman satırlarına dizilir
 - ↔️ **Çubuk sürükleme**: Zaman çizelgesinde metin/obje/bindirme çubuklarını ortadan taşı, uçlarından uzat/kısalt
 - ⏩ **Hız**: 0.01x – 10x sürgüyle (logaritmik) + hazır değerler; "ses perdesini değiştir" aç/kapa
 - 🔊 **Ses**: Klip başına ses seviyesi

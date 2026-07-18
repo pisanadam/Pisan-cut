@@ -119,7 +119,7 @@
   #ruler .tick { position:absolute; top:0; font-size:9px; color:var(--dim); transform:translateX(-50%); font-variant-numeric:tabular-nums; }
   #ruler .tick::after { content:""; position:absolute; left:50%; top:12px; width:1px; height:3px; background:var(--line); }
 
-  #textTrack { height:22px; position:relative; margin-bottom:4px; }
+  #textTrack { min-height:22px; position:relative; margin-bottom:4px; }
   .textBar {
     position:absolute; top:2px; height:17px; border-radius:5px;
     background:linear-gradient(135deg,#818cf8,#c084fc);
@@ -214,7 +214,7 @@
     font-size:20px; display:grid; place-items:center;
   }
   #musicRow {
-    height:22px; position:relative; margin-top:4px;
+    min-height:22px; position:relative; margin-top:4px;
   }
   .musicSeg {
     position:absolute; top:2px; height:17px; border-radius:5px;
@@ -1496,16 +1496,19 @@ function renderTimeline() {
     ruler.appendChild(el);
   }
 
-  // bindirme şeridi (metin + obje)
+  // bindirme şeridi (metin + obje + PiP): çakışanlar ayrı katman satırlarına
   const tt = $("#textTrack");
   tt.innerHTML = "";
   tt.style.width = total * state.pps + "px";
+  const ovLanes = assignLanes(state.overlays, o => o.start, o => o.start + o.dur);
+  tt.style.height = (ovLanes.count * 20 + 2) + "px";
   for (const o of state.overlays) {
     const b = document.createElement("div");
     b.className = "textBar" +
       (o.kind === "sticker" ? " stk" : o.kind === "pip" ? " pip" : "") +
       (o === state.selOv ? " sel" : "");
     b.style.left = o.start * state.pps + "px";
+    b.style.top = (ovLanes.map.get(o) * 20 + 2) + "px";
     b.style.width = Math.max(o.dur * state.pps, 18) + "px";
     b.textContent = o.content.replace(/\n/g, " ");
     bindOverlayBar(b, o);
@@ -1562,14 +1565,17 @@ function renderTimeline() {
   add.onclick = () => $("#fileVideo").click();
   track.appendChild(add);
 
-  // müzik şeridi (bölünebilir segment çubukları)
+  // müzik şeridi: çakışan parçalar ayrı katman satırlarına
   const mrow = $("#musicRow");
   mrow.innerHTML = "";
   mrow.style.width = total * state.pps + "px";
+  const muLanes = assignLanes(state.musics, m => m.start, m => m.start + musicDur(m));
+  mrow.style.height = (muLanes.count * 20 + 2) + "px";
   for (const m of state.musics) {
     const b = document.createElement("div");
     b.className = "musicSeg";
     b.style.left = m.start * state.pps + "px";
+    b.style.top = (muLanes.map.get(m) * 20 + 2) + "px";
     b.style.width = Math.max(musicDur(m) * state.pps, 18) + "px";
     b.textContent = "🎵 " + (m.speed !== 1 ? m.speed + "x · " : "") + m.name;
     bindMusicBar(b, m);
@@ -1582,6 +1588,20 @@ function renderTimeline() {
 }
 
 function renderAll() { renderTimeline(); scrollToTime(true); }
+
+/* zamanda çakışan öğeleri ayrı şerit satırlarına (katmanlara) dağıt */
+function assignLanes(items, startOf, endOf) {
+  const laneEnds = [];
+  const map = new Map();
+  const sorted = [...items].sort((a, b) => startOf(a) - startOf(b));
+  for (const it of sorted) {
+    let li = laneEnds.findIndex(end => startOf(it) >= end - 1e-6);
+    if (li < 0) { li = laneEnds.length; laneEnds.push(0); }
+    laneEnds[li] = endOf(it);
+    map.set(it, li);
+  }
+  return { map, count: Math.max(laneEnds.length, 1) };
+}
 
 /* zaman çizelgesi yeniden çizimini rAF'e sıkıştır (sürüklemede jank önler) */
 let tlScheduled = false;
