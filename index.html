@@ -203,14 +203,15 @@
     font-size:20px; display:grid; place-items:center;
   }
   #musicRow {
-    height:20px; position:relative; margin-top:4px;
+    height:22px; position:relative; margin-top:4px;
   }
-  #musicBar {
-    position:absolute; top:2px; height:16px; border-radius:5px;
+  .musicSeg {
+    position:absolute; top:2px; height:17px; border-radius:5px;
     background:repeating-linear-gradient(90deg, #14532d 0 6px, #166534 6px 12px);
-    color:#bbf7d0; font-size:9px; line-height:16px; padding:0 6px;
-    overflow:hidden; white-space:nowrap; display:none;
+    color:#bbf7d0; font-size:9px; line-height:17px; padding:0 6px;
+    overflow:hidden; white-space:nowrap; touch-action:none;
   }
+  .musicSeg.sel { outline:2px solid #fff; }
 
   /* ---------- Alt araç çubuğu ---------- */
   #toolbar {
@@ -416,7 +417,7 @@
       <div id="ruler"></div>
       <div id="textTrack"></div>
       <div id="clipTrack"></div>
-      <div id="musicRow"><div id="musicBar"></div></div>
+      <div id="musicRow"></div>
     </div>
   </div>
 </section>
@@ -572,8 +573,8 @@ const EMOJIS = ["😂","😍","🔥","❤️","👍","🎉","✨","⭐","💯","
 
 const state = {
   clips: [],       // {id,type,url,name,el,natDur,in,out,speed,volume,filter,adjust,effect,trans,thumb}
-  overlays: [],    // {id,kind:'text'|'sticker',content,start,dur,x,y,size,color,bg,animIn,loop}
-  music: null,     // {url,name,el,volume}
+  overlays: [],    // {id,kind:'text'|'sticker'|'pip',content,start,dur,x,y,size,color,bg,animIn,loop}
+  musics: [],      // {id,mediaId,name,url,el,natDur,start,in,out,speed,volume} — bölünebilir müzik parçaları
   aspect: "9:16",
   t: 0,
   playing: false,
@@ -631,7 +632,10 @@ const uid = () => (crypto.randomUUID ? crypto.randomUUID() : "m" + Date.now() + 
 
 /* ---------- yardımcılar ---------- */
 const clipDur = c => (c.out - c.in) / c.speed;
-const totalDur = () => state.clips.reduce((a, c) => a + clipDur(c), 0);
+const clipsDur = () => state.clips.reduce((a, c) => a + clipDur(c), 0);
+const musicDur = m => (m.out - m.in) / m.speed;
+/* proje süresi: müzik kliplerden uzunsa video son karede donarak müziğin sonuna kadar uzar */
+const totalDur = () => Math.max(clipsDur(), ...state.musics.map(m => m.start + musicDur(m)), 0);
 /* Seçili klip yoksa oynatma çubuğunun altındaki klibi hedefle */
 const targetClip = () => state.selClip || (locate(state.t) || {}).clip || null;
 const clamp = (v, a, b) => Math.min(Math.max(v, a), b);
@@ -1217,10 +1221,12 @@ requestAnimationFrame(t => { lastTick = t; tick(t); });
 
 function syncMedia() {
   const loc = locate(state.t);
+  /* müzik videodan uzunsa: klipler bitti, son kare donuk kalır */
+  const beyondClips = state.t >= clipsDur() - .02;
   for (const c of state.clips) {
     if (c.type !== "video") continue;
     const v = c.el;
-    if (loc && c === loc.clip && state.playing) {
+    if (loc && c === loc.clip && state.playing && !beyondClips) {
       const target = c.in + loc.offset * c.speed;
       /* tarayıcı sınırları dışındaki hızlarda sürüklenme sık sarma ile düzeltilir */
       v.playbackRate = clamp(c.speed, .0625, 16);
@@ -1245,11 +1251,13 @@ function syncMedia() {
       if (v.paused) v.play().catch(() => {});
     } else if (!v.paused) v.pause();
   }
-  const m = state.music;
-  if (m) {
-    if (state.playing && state.t < m.el.duration) {
-      m.el.volume = m.volume;
-      if (Math.abs(m.el.currentTime - state.t) > .3) m.el.currentTime = state.t;
+  for (const m of state.musics) {
+    const active = state.playing && state.t >= m.start && state.t < m.start + musicDur(m);
+    if (active) {
+      const target = m.in + (state.t - m.start) * m.speed;
+      m.el.playbackRate = clamp(m.speed, .0625, 16);
+      m.el.volume = clamp(m.volume, 0, 1);
+      if (Math.abs(m.el.currentTime - target) > .3) m.el.currentTime = target;
       if (m.el.paused) m.el.play().catch(() => {});
     } else if (!m.el.paused) m.el.pause();
   }
@@ -1267,7 +1275,7 @@ function pause() {
   $("#btnPlay").textContent = "▶";
   for (const c of state.clips) if (c.type === "video" && !c.el.paused) c.el.pause();
   for (const o of state.overlays) if (o.kind === "pip" && o.type === "video" && !o.el.paused) o.el.pause();
-  if (state.music && !state.music.el.paused) state.music.el.pause();
+  for (const m of state.musics) if (!m.el.paused) m.el.pause();
 }
 $("#btnPlay").onclick = () => state.playing ? pause() : play();
 
@@ -1450,14 +1458,19 @@ function renderTimeline() {
   add.onclick = () => $("#fileVideo").click();
   track.appendChild(add);
 
-  // müzik şeridi
-  const mb = $("#musicBar");
-  if (state.music) {
-    mb.style.display = "block";
-    mb.style.left = "0px";
-    mb.style.width = Math.min(state.music.el.duration || total, total) * state.pps + "px";
-    mb.textContent = "🎵 " + state.music.name;
-  } else mb.style.display = "none";
+  // müzik şeridi (bölünebilir segment çubukları)
+  const mrow = $("#musicRow");
+  mrow.innerHTML = "";
+  mrow.style.width = total * state.pps + "px";
+  for (const m of state.musics) {
+    const b = document.createElement("div");
+    b.className = "musicSeg";
+    b.style.left = m.start * state.pps + "px";
+    b.style.width = Math.max(musicDur(m) * state.pps, 18) + "px";
+    b.textContent = "🎵 " + (m.speed !== 1 ? m.speed + "x · " : "") + m.name;
+    bindMusicBar(b, m);
+    mrow.appendChild(b);
+  }
 
   $("#btnUndoDel").disabled = !state.clips.length;
   document.querySelectorAll(".tool.needsel").forEach(b =>
@@ -1516,6 +1529,47 @@ function bindOverlayBar(bar, o) {
       if (state.selOv === o) { openOverlaySheet(o); return; }
       state.selOv = o; state.selClip = null;
       renderTimeline();
+    };
+    bar.addEventListener("pointermove", move);
+    bar.addEventListener("pointerup", up);
+  });
+}
+
+/* müzik çubuğu: ortadan taşı, uçlardan kırp; dokun = düzenleme paneli */
+function bindMusicBar(bar, m) {
+  bar.addEventListener("pointerdown", e => {
+    e.preventDefault(); e.stopPropagation();
+    try { bar.setPointerCapture(e.pointerId); } catch (_) {}
+    const barW = bar.offsetWidth;
+    const offX = e.clientX - bar.getBoundingClientRect().left;
+    const edge = Math.min(16, barW / 3);
+    const mode = barW > 30 && offX < edge ? "l" : barW > 30 && offX > barW - edge ? "r" : "m";
+    const startX = e.clientX;
+    const orig = { start: m.start, in: m.in, out: m.out, durTl: musicDur(m) };
+    let moved = false;
+    const move = ev => {
+      const dx = (ev.clientX - startX) / state.pps;
+      if (!moved && Math.abs(ev.clientX - startX) < 4) return;
+      moved = true;
+      if (mode === "m") {
+        m.start = Math.max(0, orig.start + dx);
+      } else if (mode === "r") {
+        const nd = clamp(orig.durTl + dx, .3, (m.natDur - m.in) / m.speed);
+        m.out = m.in + nd * m.speed;
+      } else {
+        const ns = clamp(orig.start + dx, Math.max(0, orig.start - orig.in / m.speed), orig.start + orig.durTl - .3);
+        const delta = ns - orig.start;
+        m.start = ns;
+        m.in = clamp(orig.in + delta * m.speed, 0, m.out - .05);
+      }
+      bar.style.left = m.start * state.pps + "px";
+      bar.style.width = Math.max(musicDur(m) * state.pps, 18) + "px";
+    };
+    const up = () => {
+      bar.removeEventListener("pointermove", move);
+      bar.removeEventListener("pointerup", up);
+      if (moved) { renderTimeline(); return; }
+      openMusicSegSheet(m);
     };
     bar.addEventListener("pointermove", move);
     bar.addEventListener("pointerup", up);
@@ -2214,39 +2268,80 @@ const gestureEnd = e => {
 canvas.addEventListener("pointerup", gestureEnd);
 canvas.addEventListener("pointercancel", gestureEnd);
 
-/* ---------- Müzik ---------- */
+/* ---------- Müzik (bölünebilir, kırpılabilir, hızlanabilir parçalar) ---------- */
 function openMusicSheet() {
   openSheet("Müzik", body => {
-    if (!state.music) {
-      const add = document.createElement("button");
-      add.className = "sheetBtn primary";
-      add.textContent = "🎵 Müzik Dosyası Seç";
-      add.onclick = () => $("#fileMusic").click();
-      body.appendChild(add);
-      const hint = document.createElement("p");
-      hint.style.cssText = "font-size:12px;color:var(--dim);text-align:center;margin-top:6px";
-      hint.textContent = "MP3, M4A, WAV… cihazından bir ses dosyası ekle.";
-      body.appendChild(hint);
-    } else {
-      const nm = document.createElement("p");
-      nm.style.cssText = "font-size:13px;margin-bottom:4px";
-      nm.textContent = "🎵 " + state.music.name;
-      body.appendChild(nm);
-      sliderRow(body, "Ses", 0, 1, .05, state.music.volume, v => Math.round(v * 100) + "%", v => state.music.volume = v);
-      const del = document.createElement("button");
-      del.className = "sheetBtn danger";
-      del.textContent = "Müziği Kaldır";
-      del.onclick = () => {
-        state.music.el.pause();
-        state.music = null;
-        sheet.classList.remove("open");
-        renderTimeline();
-      };
-      body.appendChild(del);
-    }
+    const add = document.createElement("button");
+    add.className = "sheetBtn primary";
+    add.textContent = "🎵 Müzik Dosyası Ekle";
+    add.onclick = () => $("#fileMusic").click();
+    body.appendChild(add);
+    const hint = document.createElement("p");
+    hint.style.cssText = "font-size:12px;color:var(--dim);text-align:center;margin-top:6px";
+    hint.textContent = state.musics.length
+      ? "Düzenlemek için şeritteki müzik çubuğuna dokun: böl, kes, hızlandır, sil."
+      : "MP3, M4A, WAV… cihazından bir ses dosyası ekle. Müzik oynatma çubuğunun olduğu yerden başlar.";
+    body.appendChild(hint);
   });
 }
-$("#fileMusic").onchange = e => {
+
+function openMusicSegSheet(m) {
+  openSheet("Müzik 🎵 " + m.name, body => {
+    sliderRow(body, "Ses", 0, 1, .05, m.volume, v => Math.round(v * 100) + "%", v => m.volume = v);
+    sliderRow(body, "Hız", -1, 1, .01, Math.log10(clamp(m.speed, .1, 10)),
+      v => Math.pow(10, v).toFixed(2) + "x",
+      v => {
+        m.speed = clamp(Math.round(Math.pow(10, v) * 100) / 100, .1, 10);
+        scheduleTimeline();
+      });
+
+    const split = document.createElement("button");
+    split.className = "sheetBtn";
+    split.textContent = "✂️ Oynatma çubuğunda böl";
+    split.onclick = () => {
+      const t = state.t;
+      const d = musicDur(m);
+      if (t <= m.start + .15 || t >= m.start + d - .15) { toast("Bölmek için çubuğu müziğin ortasına getir"); return; }
+      const srcT = m.in + (t - m.start) * m.speed;
+      const right = {
+        ...m, id: idSeq++, start: t, in: srcT,
+        el: new Audio(m.url),
+      };
+      right.el.preload = "auto";
+      m.out = srcT;
+      state.musics.push(right);
+      sheet.classList.remove("open");
+      renderTimeline();
+      toast("Müzik bölündü");
+    };
+    body.appendChild(split);
+
+    const toPh = document.createElement("button");
+    toPh.className = "sheetBtn";
+    toPh.textContent = "⏱ Başlangıcı oynatma çubuğuna al";
+    toPh.onclick = () => { m.start = state.t; renderTimeline(); toast("Başlangıç güncellendi"); };
+    body.appendChild(toPh);
+
+    const del = document.createElement("button");
+    del.className = "sheetBtn danger";
+    del.textContent = "Bu Parçayı Sil";
+    del.onclick = () => {
+      m.el.pause();
+      state.musics = state.musics.filter(x => x !== m);
+      sheet.classList.remove("open");
+      renderTimeline();
+      seekTo(Math.min(state.t, totalDur()), true);
+    };
+    body.appendChild(del);
+
+    const hint = document.createElement("p");
+    hint.style.cssText = "font-size:11px;color:var(--dim);text-align:center;margin-top:6px";
+    hint.textContent = "İpucu: çubuğu ortadan sürükleyip taşı, uçlarından kırp.";
+    body.appendChild(hint);
+  });
+}
+
+$("#fileMusic").onchange = async e => {
   const f = e.target.files[0];
   e.target.value = "";
   if (!f) return;
@@ -2255,10 +2350,15 @@ $("#fileMusic").onchange = e => {
   idbPut("media", { id: mediaId, blob: f, name: f.name, type: f.type }).catch(() => {});
   const a = new Audio(url);
   a.preload = "auto";
-  state.music = { url, name: f.name, el: a, volume: .8, mediaId };
+  await new Promise(r => { a.onloadedmetadata = r; a.onerror = r; });
+  const natDur = await resolveDuration(a);   // kayıt cihazı ses dosyalarında duration=Infinity olabilir
+  state.musics.push({
+    id: idSeq++, mediaId, name: f.name, url, el: a,
+    natDur, start: state.t, in: 0, out: natDur, speed: 1, volume: .8,
+  });
   sheet.classList.remove("open");
   renderTimeline();
-  toast("Müzik eklendi");
+  toast("Müzik eklendi — video artık müziğin sonuna kadar uzar");
 };
 
 /* ---------- Oran ---------- */
@@ -2425,7 +2525,7 @@ async function startExport() {
   /* proje ses içeriyor mu? (opus desteklenmiyorsa gerçek zamanlıya düş) */
   const hasAudio = state.clips.some(c => c.type === "video" && c.volume > 0) ||
     state.overlays.some(o => o.kind === "pip" && o.type === "video" && o.volume > 0) ||
-    !!state.music;
+    state.musics.length > 0;
 
   if (window.VideoEncoder) {
     let codec = null;
@@ -2541,15 +2641,19 @@ async function mixAudioOffline(totalSec) {
       try { src.start(o.start, Math.min(o.in, buf.duration), playDur); any = true; } catch (_) {}
     }
   }
-  if (state.music && state.music.mediaId && state.music.volume > 0) {
-    const buf = await decodeMediaAudio(state.music.mediaId);
-    if (buf) {
-      const src = oac.createBufferSource();
-      src.buffer = buf;
-      const g = oac.createGain();
-      g.gain.value = state.music.volume;
-      src.connect(g).connect(oac.destination);
-      try { src.start(0, 0, Math.min(buf.duration, totalSec)); any = true; } catch (_) {}
+  for (const m of state.musics) {
+    if (!m.mediaId || m.volume <= 0 || m.start >= totalSec) continue;
+    const buf = await decodeMediaAudio(m.mediaId);
+    if (!buf) continue;
+    const src = oac.createBufferSource();
+    src.buffer = buf;
+    src.playbackRate.value = m.speed;
+    const g = oac.createGain();
+    g.gain.value = m.volume;
+    src.connect(g).connect(oac.destination);
+    const playSrc = Math.min(m.out, buf.duration) - m.in;
+    if (playSrc > .01) {
+      try { src.start(m.start, Math.min(m.in, buf.duration), playSrc); any = true; } catch (_) {}
     }
   }
   if (!any) return null;
@@ -2851,7 +2955,7 @@ async function realtimeExport() {
     master.connect(dest);
     const els = state.clips.filter(c => c.type === "video").map(c => c.el);
     for (const o of state.overlays) if (o.kind === "pip" && o.type === "video") els.push(o.el);
-    if (state.music) els.push(state.music.el);
+    for (const m of state.musics) els.push(m.el);
     for (const el of new Set(els)) {
       try { getSource(el).disconnect(); } catch (_) {}
       try { getSource(el).connect(master); } catch (_) {}
@@ -2907,7 +3011,10 @@ function projectData() {
     })),
     /* el/url DOM nesneleri IDB'ye yazılamaz; medya mediaId ile geri yüklenir */
     overlays: state.overlays.map(o => { const { el, url, ...rest } = o; return { ...rest }; }),
-    music: state.music ? { mediaId: state.music.mediaId, name: state.music.name, volume: state.music.volume } : null,
+    musics: state.musics.map(m => ({
+      mediaId: m.mediaId, name: m.name, natDur: m.natDur,
+      start: m.start, in: m.in, out: m.out, speed: m.speed, volume: m.volume,
+    })),
   };
 }
 
@@ -2936,7 +3043,8 @@ function resetEditorState() {
   pause();
   state.clips = [];
   state.overlays = [];
-  state.music = null;
+  for (const m of state.musics) m.el.pause();
+  state.musics = [];
   state.t = 0;
   state.selClip = null;
   state.selOv = null;
@@ -3013,14 +3121,24 @@ async function openProject(rec) {
     }
     state.overlays.push(o);
   }
-  if (rec.data.music) {
-    const m = await idbGet("media", rec.data.music.mediaId).catch(() => null);
-    if (m) {
-      const url = URL.createObjectURL(m.blob);
-      const a = new Audio(url);
-      a.preload = "auto";
-      state.music = { url, name: rec.data.music.name, el: a, volume: rec.data.music.volume, mediaId: rec.data.music.mediaId };
-    }
+  /* müzik parçaları (eski tek müzikli kayıtlarla geriye uyumlu) */
+  const musicDefs = rec.data.musics ||
+    (rec.data.music ? [{ ...rec.data.music, start: 0, in: 0, out: null, speed: 1 }] : []);
+  state.musics = [];
+  for (const md of musicDefs) {
+    const rec2 = await idbGet("media", md.mediaId).catch(() => null);
+    if (!rec2) continue;
+    const url = URL.createObjectURL(rec2.blob);
+    const a = new Audio(url);
+    a.preload = "auto";
+    await new Promise(r => { a.onloadedmetadata = r; a.onerror = r; });
+    const natDur = md.natDur || (isFinite(a.duration) ? a.duration : 60);
+    state.musics.push({
+      id: idSeq++, mediaId: md.mediaId, name: md.name, url, el: a,
+      natDur, start: md.start || 0, in: md.in || 0,
+      out: md.out == null ? natDur : md.out,
+      speed: md.speed || 1, volume: md.volume ?? .8,
+    });
   }
   lastSavedJson = JSON.stringify(projectData());
   if (state.clips.length) {
@@ -3040,11 +3158,13 @@ async function deleteProject(rec) {
   for (const p of remaining) {
     (p.data.clips || []).forEach(c => used.add(c.mediaId));
     (p.data.overlays || []).forEach(o => { if (o.mediaId) used.add(o.mediaId); });
+    (p.data.musics || []).forEach(m => used.add(m.mediaId));
     if (p.data.music) used.add(p.data.music.mediaId);
   }
   const ids = new Set();
   (rec.data.clips || []).forEach(c => ids.add(c.mediaId));
   (rec.data.overlays || []).forEach(o => { if (o.mediaId) ids.add(o.mediaId); });
+  (rec.data.musics || []).forEach(m => ids.add(m.mediaId));
   if (rec.data.music) ids.add(rec.data.music.mediaId);
   for (const id of ids) if (!used.has(id)) await idbDel("media", id).catch(() => {});
   renderProjectList();
