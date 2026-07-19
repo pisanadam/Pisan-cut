@@ -33,7 +33,7 @@ Ayarlar → Pages → dalı seç → yayınla.
 - 🎛️ **Ayarla**: Parlaklık, kontrast, doygunluk
 - 🅣 **Animasyonlu metin**: Giriş animasyonları (Pop, Solma, Kayma, Zıplama, Dönme, Daktilo) + döngü hareketleri (Dalga, Gökkuşağı, Nabız, Süzülme, Titreme); sürükleyerek konumlandır
 - 😀 **Bindirme objeler**: Emoji çıkartmaları, giriş animasyonu + sürekli hareket (süzülme, dönme, nabız…), boyut/süre ayarı, sürükleyerek taşıma
-- 🎵 **Müzik**: Birden çok parça ekle (oynatma çubuğundan başlar); çubuğunu sürükleyerek taşı/kırp, böl, sil, hızlandır (0.1x–10x), ses seviyesi; müzik videodan uzunsa proje son karede donarak müziğin sonuna kadar uzar — ya da müzik panelindeki "🎬 Videonun sonunda kes" düğmesiyle müziğin kuyruğu silinip video ile aynı anda bitmesi sağlanır
+- 🎵 **Müzik**: Birden çok parça ekle (oynatma çubuğundan başlar); çubuğunu sürükleyerek taşı/kırp, böl, sil, hızlandır (0.1x–10x), ses seviyesi; müzik videodan uzunsa proje son karede donarak müziğin sonuna kadar uzar — ya da müzik panelindeki "🎬 Videonun sonunda kes" düğmesiyle müziğin kuyruğu silinip video ile aynı anda bitmesi sağlanır; "🔁 Video sonuna kadar döngüle" ile kısa parçalar (örn. 30 sn iTunes önizmeleri) video boyunca boşluksuz tekrarlatılır
 - 📚 **Müzik kütüphaneleri**: Cihazından eklemenin yanında 3 çevrimiçi kaynakta ara, dinle ve tek dokunuşla projeye ekle — İnternet Arşivi (archive.org), Openverse ve iTunes 30 sn önizmeleri; eklenen parçalar projeyle birlikte cihazına kaydedilir
 - ↩️ **Geri al / Yinele**: PC'de Ctrl+Z geri alır, Ctrl+X (veya Ctrl+Y / Ctrl+Shift+Z) yineler; mobilde üst çubuktaki ↩ ↪ düğmeleri — 50 adıma kadar
 - ⬛ **En-boy oranı**: 9:16, 16:9, 1:1, 4:5

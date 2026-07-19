@@ -3116,6 +3116,12 @@ function openMusicSheet() {
       search.className = "fxSearch";
       search.placeholder = "🔍 Parça ara… (Enter)";
       content.appendChild(search);
+      if (lib === "itunes") {
+        const warn = document.createElement("p");
+        warn.style.cssText = "font-size:10px;color:var(--dim);margin:4px 0 6px";
+        warn.textContent = "⚠️ Apple yalnızca 30 saniyelik önizleme verir. Tam şarkılar için İnternet Arşivi veya Openverse'ü dene; ya da parçayı ekledikten sonra çubuğuna dokunup \"Video sonuna kadar döngüle\" ile tekrarlat.";
+        content.appendChild(warn);
+      }
       const list = document.createElement("div");
       content.appendChild(list);
       const doSearch = async () => {
@@ -3214,6 +3220,29 @@ function openMusicSegSheet(m) {
       toast("Müzik bölündü");
     };
     body.appendChild(split);
+
+    const loopBtn = document.createElement("button");
+    loopBtn.className = "sheetBtn";
+    loopBtn.textContent = "🔁 Video sonuna kadar döngüle";
+    loopBtn.onclick = () => {
+      const end = contentEnd();
+      let cursor = m.start + musicDur(m);
+      if (cursor >= end - .3) { toast("Müzik zaten video sonuna ulaşıyor"); return; }
+      let guard = 0;
+      while (cursor < end - .3 && guard < 40) {
+        const cp = { ...m, id: idSeq++, start: cursor, in: m.in, out: m.out, el: new Audio(m.url) };
+        cp.el.preload = "auto";
+        const remain = end - cursor;
+        if (musicDur(cp) > remain) cp.out = Math.min(cp.in + remain * cp.speed, cp.natDur);
+        state.musics.push(cp);
+        cursor += musicDur(cp);
+        guard++;
+      }
+      sheet.classList.remove("open");
+      renderTimeline();
+      toast("Müzik video sonuna kadar döngülendi 🔁");
+    };
+    body.appendChild(loopBtn);
 
     const fitBtn = document.createElement("button");
     fitBtn.className = "sheetBtn";
