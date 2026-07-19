@@ -19,7 +19,7 @@ Ayarlar → Pages → dalı seç → yayınla.
 - 🖼️ **Görünür çerçeve**: Önizlemede tuval kenarları ve boş alanlar gri gösterilir (en-boy oranı net seçilir); dışa aktarmada siyahtır
 - ⇄ **Geçişler**: Klipler arasında Solma, Siyah/Beyaz, Kaydırma, Silme, Yakınlaşma — süre ayarlı; zaman çizelgesindeki sınır düğmesinden eklenir
 - ✨ **100+ Efekt**: Arama + kategori sekmeli panel; emoji parçacık aileleri (kar, kalp, balon, kelebek, ateş…) × 4 yoğunluk, yağmur, gren, vinyet, sarsıntı, nabız, glitch, parıltı, tarama, konfeti, VHS, negatif, renk döngüsü, kamera hareketi (4 yön), flaşlar, ışık sızıntıları, bokeh, hız çizgileri
-- ⇄ **100+ Geçiş**: 17 renge karartma, 8 yönlü kaydırma/silme (+yumuşak sürümleri), bölünme, jaluzi, daire/kare/elmas/kalp/yıldız açılış-kapanışları, zoom/dönme, satranç, piksel çözülme, saat süpürmesi
+- ⇄ **119 Geçiş**: 17 renge karartma, 8 yönlü kaydırma/silme (+yumuşak sürümleri), bölünme, jaluzi, daire/kare/elmas/kalp/yıldız açılış-kapanışları, zoom/dönme, satranç, piksel çözülme, saat süpürmesi + **Ani ⚡ kategorisi**: editlerdeki vuruşlu kesimler — flaş kesim (4 renk), kamera savurma (4 yön), zoom vuruş, sekmeli zoom, sarsıntılı kesim, glitch kesim, RGB ayrışma, dönme vuruşu, bulanık kesim (seçilince süre otomatik ~0.3s)
 - 🎨 **100+ Filtre**: 10 aile × 9 yoğunluk + 12 ton kaydırma; arama ve kategorilerle
 - ▦ **108 Şablon**: Popüler edit müziği türleriyle (Phonk, Sigma, Drill, Lofi, Slowed, Synthwave…) hazır kurgu şablonları — seç, videolarını ekle; tempo kesimi, geçişler, filtre, efekt, başlık ve müzik otomatik uygulanır. "🎲 Otomatik Şablon Oluştur" ile rastgele yeni kombinasyonlar
 - 🧪 **YZ Lab**: Upscale, Kare Üretici ve tek dokunuşla Otomatik Edit

@@ -672,6 +672,22 @@ const TRANSITIONS = (() => {
   for (const n of [6, 8, 12, 16, 24, 32, 48]) t["dissolve" + n] = { name: "Piksel Çözülme " + n, cat: "piksel", kind: "dissolve", n, icon: "▩" };
   t.clockcw = { name: "Saat Yönü Süpürme", cat: "sekil", kind: "clock", dir: 1, icon: "🕐" };
   t.clockccw = { name: "Ters Saat Süpürme", cat: "sekil", kind: "clock", dir: -1, icon: "🕐" };
+  /* ANİ geçişler: editlerdeki vuruşlu kesimler (kısa süre varsayılanıyla) */
+  for (const [k, nm, col] of [["white", "Beyaz", "#fff"], ["gold", "Altın", "#f5c542"], ["red", "Kırmızı", "#ef4444"], ["cyan", "Camgöbeği", "#22d3ee"]])
+    t["flash_" + k] = { name: nm + " Flaş Kesim", cat: "ani", kind: "flashcut", color: col, defDur: .3, icon: "⚡", grad: col };
+  for (const [k, nm, dx, dy, ic] of [["L", "Sola", -1, 0, "⇜"], ["R", "Sağa", 1, 0, "⇝"], ["U", "Yukarı", 0, -1, "⤊"], ["D", "Aşağı", 0, 1, "⤋"]])
+    t["whip" + k] = { name: "Savurma " + nm, cat: "ani", kind: "whip", dx, dy, defDur: .3, icon: ic };
+  t.punchin = { name: "Zoom Vuruş İçeri", cat: "ani", kind: "punch", z: 1, defDur: .3, icon: "👊" };
+  t.punchout = { name: "Zoom Vuruş Dışarı", cat: "ani", kind: "punch", z: -1, defDur: .3, icon: "👊" };
+  t.bouncezoom = { name: "Sekmeli Zoom", cat: "ani", kind: "punch", z: 1, bounce: true, defDur: .45, icon: "🏀" };
+  t.shakecut1 = { name: "Sarsıntılı Kesim Hafif", cat: "ani", kind: "shakecut", amp: 14, defDur: .35, icon: "💥" };
+  t.shakecut2 = { name: "Sarsıntılı Kesim Sert", cat: "ani", kind: "shakecut", amp: 30, defDur: .35, icon: "💥" };
+  t.glitchcut1 = { name: "Glitch Kesim", cat: "ani", kind: "glitchcut", mult: 1, defDur: .3, icon: "👾" };
+  t.glitchcut2 = { name: "Glitch Kesim Sert", cat: "ani", kind: "glitchcut", mult: 2, defDur: .35, icon: "👾" };
+  t.rgbsplit = { name: "RGB Ayrışma", cat: "ani", kind: "rgbsplit", defDur: .3, icon: "🟥" };
+  t.spinpunch1 = { name: "Dönme Vuruşu Sağ", cat: "ani", kind: "spinpunch", dir: 1, defDur: .35, icon: "🌪" };
+  t.spinpunch2 = { name: "Dönme Vuruşu Sol", cat: "ani", kind: "spinpunch", dir: -1, defDur: .35, icon: "🌪" };
+  t.blurcut = { name: "Bulanık Kesim", cat: "ani", kind: "blurcut", defDur: .35, icon: "🌫" };
   /* eski proje anahtarları */
   t.black = { ...t.dip_black, hidden: true };
   t.white = { ...t.dip_white, hidden: true };
@@ -679,7 +695,7 @@ const TRANSITIONS = (() => {
   t.zoom = { ...t.zoomin, hidden: true };
   return t;
 })();
-const TR_CATS = { all: "Tümü", temel: "Temel", kaydirma: "Kaydırma", silme: "Silme", sekil: "Şekil", renk: "Renk", zoom: "Zoom", piksel: "Piksel" };
+const TR_CATS = { all: "Tümü", ani: "Ani ⚡", temel: "Temel", kaydirma: "Kaydırma", silme: "Silme", sekil: "Şekil", renk: "Renk", zoom: "Zoom", piksel: "Piksel" };
 
 const ANIM_IN = {
   none: "Yok", fade: "Solma", pop: "Pop", slideUp: "Yukarı",
@@ -1382,6 +1398,117 @@ function drawTransition(prev, spec, p) {
           if (e < n1(i * 131 + j * 17)) c2.rect(i * cw, j * cw, cw + .5, cw + .5);
         }
       } });
+      break;
+    }
+    /* --- ANİ geçişler: sert kesim + tüm kareye vuruş --- */
+    case "flashcut": {
+      const a = Math.pow(1 - e, 2) * .9;
+      if (a > .01) {
+        ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = spec.color; ctx.fillRect(0, 0, W, H); ctx.restore();
+      }
+      break;
+    }
+    case "whip": {
+      const q = 1 - easeOut(e);
+      const k = fxScale();
+      dp({ tx: spec.dx * e * W * 1.3, ty: spec.dy * e * H * 1.3, alpha: q });
+      ctx.save();
+      for (let i = 1; i <= 3; i++) {
+        ctx.globalAlpha = .22 * q;
+        try { ctx.drawImage(canvas, -spec.dx * q * 70 * k * i, -spec.dy * q * 70 * k * i); } catch (_) {}
+      }
+      ctx.restore();
+      ctx.globalAlpha = 1;
+      break;
+    }
+    case "punch": {
+      const q = spec.bounce ? (1 - bounceOut(e)) : (1 - easeOut(e));
+      const sc = spec.z > 0 ? 1 + .4 * q : 1 / (1 + .4 * q);
+      ctx.save();
+      ctx.translate(W / 2, H / 2); ctx.scale(sc, sc); ctx.translate(-W / 2, -H / 2);
+      try { ctx.drawImage(canvas, 0, 0); } catch (_) {}
+      ctx.restore();
+      break;
+    }
+    case "shakecut": {
+      const q = 1 - easeOut(e);
+      const k = fxScale();
+      const f = Math.floor(state.t * 30);
+      const dx = (n1(f) - .5) * spec.amp * 2 * q * k;
+      const dy = (n1(f + 7) - .5) * spec.amp * 2 * q * k;
+      ctx.save();
+      ctx.translate(W / 2, H / 2); ctx.scale(1 + .06 * q, 1 + .06 * q); ctx.translate(-W / 2 + dx, -H / 2 + dy);
+      try { ctx.drawImage(canvas, 0, 0); } catch (_) {}
+      ctx.restore();
+      break;
+    }
+    case "glitchcut": {
+      const q = 1 - e;
+      const k = fxScale();
+      const kct = Math.round(4 + spec.mult * 4);
+      for (let i = 0; i < kct; i++) {
+        const seed = Math.floor(state.t * 24) * 10 + i;
+        const sy = n1(seed) * H;
+        const sh = (10 + n1(seed + 1) * 50) * k;
+        const dx = (n1(seed + 2) - .5) * 90 * spec.mult * q * k;
+        try { ctx.drawImage(canvas, 0, sy, W, sh, dx, sy, W, sh); } catch (_) {}
+        if (n1(seed + 3) > .6) {
+          ctx.fillStyle = i % 2 ? "rgba(255,0,80,.12)" : "rgba(0,255,255,.12)";
+          ctx.fillRect(0, sy, W, sh);
+        }
+      }
+      /* ilk %35'te önceki klipten şeritler karışır */
+      if (e < .35) {
+        const bands = 3;
+        for (let i = 0; i < bands; i++) {
+          const seed = Math.floor(state.t * 20) * 7 + i;
+          const sy = n1(seed) * H, sh = (20 + n1(seed + 1) * 60) * k;
+          dp({ clipRect: [0, sy, W, sh], tx: (n1(seed + 2) - .5) * 60 * k });
+        }
+      }
+      break;
+    }
+    case "rgbsplit": {
+      const q = 1 - easeOut(e);
+      const off = 26 * q * fxScale();
+      if (off > .5) {
+        ctx.save();
+        ctx.globalCompositeOperation = "screen";
+        ctx.globalAlpha = .5;
+        try { ctx.drawImage(canvas, off, 0); ctx.drawImage(canvas, -off, 0); } catch (_) {}
+        ctx.restore();
+        ctx.save();
+        ctx.globalCompositeOperation = "multiply";
+        ctx.globalAlpha = .25 * q;
+        ctx.fillStyle = "#f0f";
+        ctx.fillRect(0, 0, W / 2, H);
+        ctx.fillStyle = "#0ff";
+        ctx.fillRect(W / 2, 0, W / 2, H);
+        ctx.restore();
+      }
+      break;
+    }
+    case "spinpunch": {
+      const q = 1 - easeOut(e);
+      ctx.save();
+      ctx.translate(W / 2, H / 2);
+      ctx.rotate(spec.dir * q * .35);
+      ctx.scale(1 + .25 * q, 1 + .25 * q);
+      ctx.translate(-W / 2, -H / 2);
+      try { ctx.drawImage(canvas, 0, 0); } catch (_) {}
+      ctx.restore();
+      break;
+    }
+    case "blurcut": {
+      const q = 1 - easeOut(e);
+      const b = q * 14 * fxScale();
+      if (b > .5) {
+        ctx.save();
+        ctx.filter = `blur(${b.toFixed(1)}px)`;
+        try { ctx.drawImage(canvas, 0, 0); } catch (_) {}
+        ctx.restore();
+        ctx.filter = "none";
+      }
       break;
     }
   }
@@ -2297,7 +2424,7 @@ function openTransSheetNearPlayhead() {
 
 function openTransSheet(leftClip) {
   openSheet("Geçişler (100+)", body => {
-    sliderRow(body, "Süre", .3, 1.5, .1, leftClip.trans.dur, v => v.toFixed(1) + "s", v => leftClip.trans.dur = v);
+    const durSlider = sliderRow(body, "Süre", .2, 1.5, .05, leftClip.trans.dur, v => v.toFixed(2) + "s", v => leftClip.trans.dur = v);
     buildCatalog(body, {
       cats: TR_CATS,
       entries: TRANSITIONS,
@@ -2305,6 +2432,12 @@ function openTransSheet(leftClip) {
       renderTile: (key, tr) => `<span class="tile" style="background:${tr.grad || "linear-gradient(135deg,#263041,#3b4a63)"};font-size:26px;color:#dbe3f0">${tr.icon}</span><span class="nm">${tr.name}</span>`,
       onPick: key => {
         leftClip.trans.type = key;
+        const spec = TRANSITIONS[key];
+        if (spec && spec.defDur) {   /* ani geçişler kısa varsayılanla gelir */
+          leftClip.trans.dur = spec.defDur;
+          durSlider.value = spec.defDur;
+          durSlider.dispatchEvent(new Event("input"));
+        }
         renderTimeline();
         /* önizleme: geçişin hemen öncesine sar ve oynat */
         const b = clipStart(leftClip) + clipDur(leftClip);
@@ -4037,12 +4170,12 @@ const TPL_MUSIC = [
   ["Rock", "rock anthem", "epik"], ["Synthwave", "synthwave", "retro"], ["Retro 80s", "80s retro", "retro"],
 ];
 const TPL_STYLES = [
-  { tag: "Hızlı Kesim", pace: .6, trans: "dip_black", filter: "canli5", effect: "none", anim: "pop" },
+  { tag: "Hızlı Kesim", pace: .6, trans: "punchin", filter: "canli5", effect: "none", anim: "pop" },
   { tag: "Akıcı", pace: 1.3, trans: "fade", filter: "sicak4", effect: "none", anim: "fade" },
-  { tag: "Glitch", pace: .8, trans: "dissolve16", filter: "dramatik5", effect: "glitch2", anim: "typewriter" },
+  { tag: "Glitch", pace: .8, trans: "glitchcut1", filter: "dramatik5", effect: "glitch2", anim: "typewriter" },
   { tag: "Rüya", pace: 1.6, trans: "circleout", filter: "soluk5", effect: "bokeh2", anim: "fade" },
   { tag: "Retro", pace: 1.2, trans: "blindsH8", filter: "retro6", effect: "vhs1", anim: "slideUp" },
-  { tag: "Enerji", pace: .5, trans: "zoomspin1", filter: "neon4", effect: "sparkle2", anim: "bounce" },
+  { tag: "Enerji", pace: .5, trans: "whipR", filter: "neon4", effect: "sparkle2", anim: "bounce" },
 ];
 const TEMPLATES = [];
 TPL_MUSIC.forEach(([mn, q, cat], mi) => TPL_STYLES.forEach((st2, si) =>
