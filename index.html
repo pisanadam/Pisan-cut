@@ -624,6 +624,27 @@ const EFFECTS = (() => {
     P("bokeh" + sfx, nm, "🔆", "sinema", { kind: "bokeh", col });
   for (const [sfx, nm, dx, dy] of [["1", "Hız Çizgileri Sağ", 1, 0], ["2", "Hız Çizgileri Sol", -1, 0], ["3", "Hız Çizgileri Aşağı", 0, 1], ["4", "Hız Çizgileri Yukarı", 0, -1]])
     P("speed" + sfx, nm, "💨", "hareket", { kind: "speedlines", dx, dy });
+  /* titreme / sallanma / kamera hareketi aileleri */
+  for (const [sfx, nm, spd, amp] of [["1", "Yavaş", .8, .04], ["2", "Orta", 1.6, .06], ["3", "Hızlı", 3, .09]])
+    P("wobble" + sfx, "Sallanma " + nm, "🌊", "hareket", { kind: "wobble", spd, amp });
+  for (const [sfx, nm, spd, amp] of [["1", "Hafif", 1, 14], ["2", "Orta", 2, 24], ["3", "Sert", 3.5, 38]])
+    P("handheld" + sfx, "El Kamerası " + nm, "🤳", "hareket", { kind: "handheld", spd, amp });
+  P("quake1", "Deprem Hafif", "🌍", "hareket", { kind: "quake", amp: 30 });
+  P("quake2", "Deprem Şiddetli", "🌍", "hareket", { kind: "quake", amp: 55 });
+  for (const [sfx, nm, spd, amp] of [["1", "Yavaş", 1, 25], ["2", "Orta", 2, 35], ["3", "Hızlı", 3.4, 50]])
+    P("bounce" + sfx, "Zıplama " + nm, "⛹️", "hareket", { kind: "bouncefx", spd, amp });
+  for (const [sfx, nm, spd, amp] of [["1", "Yavaş", 1.2, .05], ["2", "Orta", 2.4, .09], ["3", "Hızlı", 4, .14]])
+    P("swing" + sfx, "Salıncak " + nm, "🎠", "hareket", { kind: "swing", spd, amp });
+  for (const [sfx, bpm] of [["1", 60], ["2", 100], ["3", 140]])
+    P("zoombeat" + sfx, "Bas Vuruşu " + bpm + " BPM", "🔊", "hareket", { kind: "zoombeat", bpm, amp: .12 });
+  P("orbit1", "Yörünge Yavaş", "🪐", "hareket", { kind: "orbit", spd: 1.5, amp: 18 });
+  P("orbit2", "Yörünge Hızlı", "🪐", "hareket", { kind: "orbit", spd: 3, amp: 30 });
+  P("drift1", "Süzülme Yatay", "🎥", "hareket", { kind: "drift", dx: 1, dy: 0 });
+  P("drift2", "Süzülme Dikey", "🎥", "hareket", { kind: "drift", dx: 0, dy: 1 });
+  P("jitter1", "Mikro Titreme", "📳", "hareket", { kind: "jitter", amp: 6 });
+  P("jitter2", "Mikro Titreme Sert", "📳", "hareket", { kind: "jitter", amp: 12 });
+  P("rotpulse1", "Dönme Nabzı Sağ", "🌀", "hareket", { kind: "rotpulse", dir: 1, bpm: 100 });
+  P("rotpulse2", "Dönme Nabzı Sol", "🌀", "hareket", { kind: "rotpulse", dir: -1, bpm: 100 });
   /* eski proje anahtarları (görünmez takma adlar) */
   for (const [legacy, src] of [["kenburns", "kenburns1"], ["pulse", "pulse2"], ["shake", "shake2"],
     ["vhs", "vhs1"], ["glitch", "glitch2"], ["grain", "grain2"], ["vignette", "vin2"],
@@ -1070,6 +1091,54 @@ function effectTransform(c, into) {
     case "kenburns": {
       const pr = clamp(into / Math.max(clipDur(c), .01), 0, 1);
       return { scale: 1.06 + .22 * pr, tx: (sp.kx || 0) * (pr - .5) * .1 * W, ty: (sp.ky || 0) * (pr - .5) * .1 * H };
+    }
+    case "wobble": {
+      const w = state.t * sp.spd;
+      return { rot: Math.sin(w) * sp.amp, tx: Math.sin(w * .7) * 10 * k, ty: Math.cos(w * .9) * 8 * k, scale: 1.06 };
+    }
+    case "handheld": {
+      /* düşük frekanslı doğal el kamerası sürüklenmesi (smoothstep gürültü) */
+      const t2 = state.t * sp.spd;
+      const f = Math.floor(t2), fr = t2 - f;
+      const sm = (a, b) => a + (b - a) * (fr * fr * (3 - 2 * fr));
+      return {
+        tx: (sm(n1(f), n1(f + 1)) - .5) * sp.amp * k,
+        ty: (sm(n1(f + 50), n1(f + 51)) - .5) * sp.amp * .8 * k,
+        rot: (sm(n1(f + 90), n1(f + 91)) - .5) * .04,
+        scale: 1.06,
+      };
+    }
+    case "quake": {
+      const f = Math.floor(state.t * 28);
+      return {
+        tx: (n1(f) - .5) * sp.amp * k,
+        ty: (n1(f + 31) - .5) * sp.amp * k,
+        rot: (n1(f + 61) - .5) * .06,
+        scale: 1.08,
+      };
+    }
+    case "bouncefx":
+      return { ty: -Math.abs(Math.sin(state.t * Math.PI * sp.spd)) * sp.amp * k, scale: 1.06 };
+    case "swing":
+      return { rot: Math.sin(state.t * sp.spd) * sp.amp, scale: 1.1 };
+    case "zoombeat": {
+      const ph = (state.t * sp.bpm / 60) % 1;
+      return { scale: 1 + sp.amp * Math.pow(1 - ph, 3) };
+    }
+    case "orbit": {
+      const a = state.t * sp.spd;
+      return { tx: Math.cos(a) * sp.amp * k, ty: Math.sin(a) * sp.amp * k, scale: 1.06 };
+    }
+    case "drift":
+      return { tx: (sp.dx || 0) * Math.sin(state.t * .8) * 30 * k, ty: (sp.dy || 0) * Math.sin(state.t * .8) * 30 * k, scale: 1.08 };
+    case "jitter": {
+      const f = Math.floor(state.t * 50);
+      return { tx: (n1(f) - .5) * sp.amp * k, ty: (n1(f + 9) - .5) * sp.amp * k, scale: 1.02 };
+    }
+    case "rotpulse": {
+      const ph = (state.t * sp.bpm / 60) % 1;
+      const q = Math.pow(1 - ph, 3);
+      return { rot: sp.dir * q * .12, scale: 1 + q * .15 };
     }
   }
   return {};
@@ -1670,6 +1739,7 @@ function drawFrame() {
       tx: (et.tx || 0) + (c.tx || 0) * W,
       ty: (et.ty || 0) + (c.ty || 0) * H,
       scale: (et.scale || 1) * (c.scale || 1),
+      rot: et.rot || 0,
     });
     /* önceki klipten geçiş: sınırdan sonra tr.dur boyunca */
     const prev = idx > 0 ? state.clips[idx - 1] : null;
