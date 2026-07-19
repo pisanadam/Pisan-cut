@@ -3037,6 +3037,21 @@ const MUSIC_LIBS = {
       }));
     },
   },
+  wikimedia: {
+    name: "📖 Wikimedia",
+    async search(q) {
+      const u = "https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=" +
+        encodeURIComponent("filetype:audio " + q) +
+        "&gsrnamespace=6&gsrlimit=15&prop=imageinfo&iiprop=url&format=json&origin=*";
+      const j = await (await fetch(u)).json();
+      const pages = Object.values((j.query || {}).pages || {});
+      return pages.filter(p => p.imageinfo && p.imageinfo[0] && p.imageinfo[0].url).map(p => ({
+        title: p.title.replace(/^File:/, "").replace(/\.(ogg|oga|mp3|wav|flac|opus|mid)$/i, ""),
+        artist: "Wikimedia Commons",
+        resolve: async () => p.imageinfo[0].url,
+      }));
+    },
+  },
   itunes: {
     name: "🍎 iTunes (30 sn)",
     async search(q) {
