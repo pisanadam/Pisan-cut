@@ -2160,18 +2160,22 @@ function splitAtPlayhead() {
   toast("Klip bölündü — aradaki | düğmesiyle geçiş ekleyebilirsin");
 }
 
-function duplicateClip() {
-  const c = targetClip();
-  if (!c) return;
-  pushHistory();
+function cloneClip(c) {
   let el = c.el;
   if (c.type === "video") {
     el = document.createElement("video");
     el.src = c.url; el.preload = "auto";
     el.playsInline = true; el.setAttribute("playsinline", "");
+    el.addEventListener("seeked", invalidate);
   }
-  const copy = { ...c, id: idSeq++, el, adjust: { ...c.adjust }, trans: { ...c.trans } };
-  state.clips.splice(state.clips.indexOf(c) + 1, 0, copy);
+  return { ...c, id: idSeq++, el, adjust: { ...c.adjust }, trans: { ...c.trans } };
+}
+
+function duplicateClip() {
+  const c = targetClip();
+  if (!c) return;
+  pushHistory();
+  state.clips.splice(state.clips.indexOf(c) + 1, 0, cloneClip(c));
   renderAll();
   toast("Klip kopyalandı");
 }
@@ -4111,11 +4115,32 @@ function useTemplate(tpl) {
 async function applyTemplate(tpl) {
   pushHistory();
   const st2 = tpl.style;
-  for (const c of state.clips) {
+  const MIN_T = 10, MAX_T = 30;
+  const n = state.clips.length || 1;
+  /* klip başına süre: tempo korunur ama toplam 10-30 sn aralığına oturtulur */
+  let per = st2.pace;
+  if (per * n < MIN_T) per = MIN_T / n;
+  if (per * n > MAX_T) per = Math.max(MAX_T / n, .4);
+  const styleClip = c => {
     c.filter = st2.filter;
     if (st2.effect !== "none") c.effect = st2.effect;
-    c.out = Math.min(c.out, c.in + st2.pace * c.speed);
-    c.trans = { type: st2.trans, dur: Math.min(.5, st2.pace / 2) };
+    const maxOut = c.type === "image" ? c.in + 600 : c.natDur;
+    c.out = clamp(c.in + per * c.speed, c.in + .2, maxOut);
+    c.trans = { type: st2.trans, dur: Math.min(.5, per / 2) };
+  };
+  for (const c of state.clips) styleClip(c);
+  /* videolar kısaysa (uzatılamıyorsa) klipleri döngüyle çoğaltarak 10 sn'yi doldur */
+  let guard = 0;
+  while (clipsDur() < MIN_T - .01 && state.clips.length && guard < 60) {
+    state.clips.push(cloneClip(state.clips[guard % n]));
+    guard++;
+  }
+  /* 30 sn'yi aşarsa sondan kısalt */
+  while (clipsDur() > MAX_T + .01 && state.clips.length > 1) {
+    const last = state.clips[state.clips.length - 1];
+    const excess = clipsDur() - MAX_T;
+    if (clipDur(last) - excess >= .3) { last.out -= excess * last.speed; break; }
+    state.clips.pop();
   }
   if (state.clips.length) state.clips[state.clips.length - 1].trans = { type: "none", dur: .5 };
   state.overlays.push({
