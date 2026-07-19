@@ -3006,25 +3006,41 @@ function jsonp(url) {
   });
 }
 
+/* İnternet Arşivi araması (phonk kataloğu popülerliğe göre sıralar) */
+async function archiveSearch(q, popular) {
+  const u = "https://archive.org/advancedsearch.php?q=" + encodeURIComponent(q + " AND mediatype:audio AND format:MP3") +
+    "&fl[]=identifier&fl[]=title&fl[]=creator&rows=20&page=1&output=json" +
+    (popular ? "&sort[]=downloads+desc" : "");
+  const j = await (await fetch(u)).json();
+  return (j.response?.docs || []).map(d => ({
+    title: d.title || d.identifier,
+    artist: Array.isArray(d.creator) ? d.creator[0] : (d.creator || ""),
+    resolve: async () => {
+      const m = await (await fetch("https://archive.org/metadata/" + d.identifier)).json();
+      const f = (m.files || []).find(f => /\.mp3$/i.test(f.name));
+      return f ? "https://archive.org/download/" + d.identifier + "/" + encodeURIComponent(f.name) : null;
+    },
+  }));
+}
+
 /* çevrimiçi telifsiz müzik kütüphaneleri */
 const MUSIC_LIBS = {
   device: { name: "📱 Cihazım" },
+  phonk: {
+    name: "🎧 Phonk",
+    presets: [
+      ["🔥 Popüler", "phonk"],
+      ["🚗 Drift", "drift phonk"],
+      ["🇧🇷 Brazilian", "brazilian phonk funk"],
+      ["😤 Agresif", "aggressive phonk"],
+      ["🌙 Chill", "chill phonk"],
+      ["🗿 Sigma", "sigma phonk"],
+    ],
+    async search(q) { return archiveSearch(q, true); },
+  },
   archive: {
     name: "🏛 İnternet Arşivi",
-    async search(q) {
-      const u = "https://archive.org/advancedsearch.php?q=" + encodeURIComponent(q + " AND mediatype:audio AND format:MP3") +
-        "&fl[]=identifier&fl[]=title&fl[]=creator&rows=15&page=1&output=json";
-      const j = await (await fetch(u)).json();
-      return (j.response?.docs || []).map(d => ({
-        title: d.title || d.identifier,
-        artist: Array.isArray(d.creator) ? d.creator[0] : (d.creator || ""),
-        resolve: async () => {
-          const m = await (await fetch("https://archive.org/metadata/" + d.identifier)).json();
-          const f = (m.files || []).find(f => /\.mp3$/i.test(f.name));
-          return f ? "https://archive.org/download/" + d.identifier + "/" + encodeURIComponent(f.name) : null;
-        },
-      }));
-    },
+    async search(q) { return archiveSearch(q); },
   },
   openverse: {
     name: "🌐 Openverse",
@@ -3139,9 +3155,10 @@ function openMusicSheet() {
       }
       const list = document.createElement("div");
       content.appendChild(list);
-      const doSearch = async () => {
-        const q = search.value.trim();
+      const doSearch = async (qOverride) => {
+        let q = qOverride != null ? qOverride : search.value.trim();
         if (!q) return;
+        if (lib === "phonk" && !/phonk/i.test(q)) q += " phonk";
         list.innerHTML = `<p style="font-size:12px;color:var(--dim);text-align:center;padding:12px">Aranıyor…</p>`;
         try {
           const results = await MUSIC_LIBS[lib].search(q);
@@ -3196,8 +3213,30 @@ function openMusicSheet() {
       const go = document.createElement("button");
       go.className = "sheetBtn";
       go.textContent = "Ara";
-      go.onclick = doSearch;
+      go.onclick = () => doSearch();
       content.insertBefore(go, list);
+      /* hazır kategori çipleri (Phonk kataloğu): dokun ve listele */
+      const presets = MUSIC_LIBS[lib].presets;
+      if (presets) {
+        const chips = document.createElement("div");
+        chips.className = "chips";
+        chips.style.margin = "0 0 10px";
+        presets.forEach(([label, pq], i) => {
+          const b = document.createElement("button");
+          b.className = "chip" + (i === 0 ? " sel" : "");
+          b.textContent = label;
+          b.onclick = () => {
+            chips.querySelectorAll(".chip").forEach(x => x.classList.remove("sel"));
+            b.classList.add("sel");
+            doSearch(pq);
+          };
+          chips.appendChild(b);
+        });
+        content.insertBefore(chips, go);
+        go.style.display = "none";           // katalogda "Ara" yerine çipler öncelikli
+        search.addEventListener("input", () => { go.style.display = search.value.trim() ? "block" : "none"; });
+        doSearch(presets[0][1]);             // sekme açılır açılmaz popülerleri getir
+      }
     };
 
     renderTabs();
