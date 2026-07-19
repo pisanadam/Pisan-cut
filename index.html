@@ -801,7 +801,7 @@ const uid = () => (crypto.randomUUID ? crypto.randomUUID() : "m" + Date.now() + 
 const hist = { undo: [], redo: [] };
 function snapState() {
   return {
-    clips: state.clips.map(c => ({ ...c, adjust: { ...c.adjust }, trans: { ...c.trans } })),
+    clips: state.clips.map(c => ({ ...c, adjust: { ...c.adjust }, trans: { ...c.trans }, effects: [...(c.effects || [])] })),
     overlays: state.overlays.map(o => ({ ...o })),
     musics: state.musics.map(m => ({ ...m })),
     aspect: state.aspect, resolution: state.resolution, fps: state.fps,
@@ -819,7 +819,7 @@ function pushHistory() {
 }
 function applySnap(s) {
   pause();
-  state.clips = s.clips.map(c => ({ ...c, adjust: { ...c.adjust }, trans: { ...c.trans } }));
+  state.clips = s.clips.map(c => ({ ...c, adjust: { ...c.adjust }, trans: { ...c.trans }, effects: [...(c.effects || [])] }));
   state.overlays = s.overlays.map(o => ({ ...o }));
   state.musics = s.musics.map(m => ({ ...m }));
   state.selClip = null; state.selOv = null;
@@ -1009,7 +1009,7 @@ function mkClip(type, url, name, el, natDur) {
     pitchShift: false,           // true: hız değişince ses perdesi de değişsin
     tx: 0, ty: 0, scale: 1,      // önizlemede parmakla taşıma / yakınlaştırma
     adjust: { b: 1, c: 1, s: 1 },
-    effect: "none",
+    effects: [],
     trans: { type: "none", dur: .6 },  // bu klipten SONRAKİNE geçiş
     thumb: null,
   };
@@ -1076,10 +1076,18 @@ function drawClipImage(c, o = {}) {
 /* çözünürlükten bağımsız efekt ölçeği (önizleme küçük canvas'ta çalışır) */
 const fxScale = () => Math.min(canvas.width, canvas.height) / 720;
 
-/* efektin klip çizimine uyguladığı dönüşüm (spec.kind'a göre) */
+/* birden çok efektin dönüşümleri birleşir: kaymalar/dönme toplanır, ölçek çarpılır */
 function effectTransform(c, into) {
-  const sp = EFFECTS[c.effect];
-  if (!sp) return {};
+  let tx = 0, ty = 0, rot = 0, scale = 1;
+  for (const key of c.effects || []) {
+    const sp = EFFECTS[key];
+    if (!sp) continue;
+    const r = effectTransformOne(sp, c, into);
+    tx += r.tx || 0; ty += r.ty || 0; rot += r.rot || 0; scale *= r.scale || 1;
+  }
+  return { tx, ty, rot, scale };
+}
+function effectTransformOne(sp, c, into) {
   const k = fxScale(), W = canvas.width, H = canvas.height;
   switch (sp.kind) {
     case "shake": {
@@ -1144,10 +1152,14 @@ function effectTransform(c, into) {
   return {};
 }
 
-/* klip üstüne çizilen efekt katmanları (spec.kind'a göre generic) */
+/* klip üstüne çizilen efekt katmanları: seçili tüm efektler sırayla */
 function drawEffectOverlay(c) {
-  const sp = EFFECTS[c.effect];
-  if (!sp || sp.kind === "none") return;
+  for (const key of c.effects || []) {
+    const sp = EFFECTS[key];
+    if (sp && sp.kind !== "none") drawEffectOverlayOne(sp);
+  }
+}
+function drawEffectOverlayOne(sp) {
   const W = canvas.width, H = canvas.height, t = state.t, k = fxScale();
   switch (sp.kind) {
     case "emoji": {
@@ -2004,7 +2016,7 @@ function renderTimeline() {
     const badge = document.createElement("span");
     badge.className = "badge";
     badge.textContent =
-      (c.effect !== "none" ? "✨ " : "") +
+      (c.effects && c.effects.length ? "✨" + (c.effects.length > 1 ? c.effects.length : "") + " " : "") +
       (c.speed !== 1 ? c.speed + "x · " : "") + clipDur(c).toFixed(1) + "s";
     d.appendChild(badge);
 
@@ -2270,7 +2282,7 @@ function bindTrim(handle, clip, side) {
       clipEl.style.width = Math.max(clipDur(clip) * state.pps, 24) + "px";
       if (badge) {
         badge.textContent =
-          (clip.effect !== "none" ? "✨ " : "") +
+          (clip.effects && clip.effects.length ? "✨ " : "") +
           (clip.speed !== 1 ? clip.speed + "x · " : "") + clipDur(clip).toFixed(1) + "s";
       }
       /* kesilen uçtaki kareyi canlı göster (kaydırma yapmadan) */
@@ -2348,7 +2360,7 @@ function splitAtPlayhead() {
   const srcT = c.in + loc.offset * c.speed;
   if (srcT - c.in < .15 || c.out - srcT < .15) { toast("Bölmek için oynatma çubuğunu klibin ortasına getir"); return; }
   pushHistory();
-  const right = { ...c, id: idSeq++, adjust: { ...c.adjust }, trans: { ...c.trans }, in: srcT };
+  const right = { ...c, id: idSeq++, adjust: { ...c.adjust }, trans: { ...c.trans }, effects: [...(c.effects || [])], in: srcT };
   c.out = srcT;
   c.trans = { type: "none", dur: .6 };  // yeni sınır geçişsiz başlar
   state.clips.splice(state.clips.indexOf(c) + 1, 0, right);
@@ -2365,7 +2377,7 @@ function cloneClip(c) {
     el.playsInline = true; el.setAttribute("playsinline", "");
     el.addEventListener("seeked", invalidate);
   }
-  return { ...c, id: idSeq++, el, adjust: { ...c.adjust }, trans: { ...c.trans } };
+  return { ...c, id: idSeq++, el, adjust: { ...c.adjust }, trans: { ...c.trans }, effects: [...(c.effects || [])] };
 }
 
 function duplicateClip() {
@@ -2430,7 +2442,7 @@ function subhead(body, text) {
 }
 
 /* arama + kategori sekmeleri + kutucuk ızgarası: efekt/filtre/geçiş panelleri */
-function buildCatalog(body, { cats, entries, selectedKey, renderTile, onPick }) {
+function buildCatalog(body, { cats, entries, selectedKey, renderTile, onPick, multi }) {
   const search = document.createElement("input");
   search.className = "fxSearch";
   search.placeholder = "🔍 Ara…";
@@ -2458,11 +2470,14 @@ function buildCatalog(body, { cats, entries, selectedKey, renderTile, onPick }) 
       if (it.hidden) continue;
       if (cat !== "all" && it.cat !== cat && key !== "none") continue;
       if (q && !it.name.toLocaleLowerCase("tr").includes(q)) continue;
+      const selv = selectedKey();
+      const isSel = Array.isArray(selv) ? selv.includes(key) : selv === key;
       const el = document.createElement("button");
-      el.className = "fxTile" + (selectedKey() === key ? " sel" : "");
+      el.className = "fxTile" + (isSel ? " sel" : "");
       el.innerHTML = renderTile(key, it);
       el.onclick = () => {
         onPick(key);
+        if (multi) { rGrid(); return; }   // çoklu seçimde durum yeniden çizilir
         grid.querySelectorAll(".fxTile").forEach(x => x.classList.remove("sel"));
         el.classList.add("sel");
       };
@@ -2521,16 +2536,36 @@ function openTransSheet(leftClip) {
 /* ---------- Efektler (100+; arama + kategoriler) ---------- */
 function openEffectSheet() {
   const c = targetClip(); if (!c) return;
+  if (!c.effects) c.effects = [];
   openSheet("Efektler", body => {
+    const info = document.createElement("p");
+    info.style.cssText = "font-size:11px;color:var(--dim);margin:0 0 8px";
+    const updInfo = () => {
+      info.textContent = c.effects.length
+        ? "Seçili: " + c.effects.map(k => (EFFECTS[k] || {}).name).join(" + ")
+        : "Birden fazla efekt seçebilirsin — tekrar dokununca kalkar.";
+    };
+    updInfo();
+    body.appendChild(info);
     buildCatalog(body, {
       cats: FX_CATS,
       entries: EFFECTS,
-      selectedKey: () => c.effect,
+      multi: true,
+      selectedKey: () => c.effects.length ? c.effects : ["none"],
       renderTile: (key, f) => `<span class="tile" style="background:${f.grad}">${f.icon}</span><span class="nm">${f.name}</span>`,
       onPick: key => {
-        c.effect = key;
+        if (key === "none") c.effects = [];
+        else {
+          const i = c.effects.indexOf(key);
+          if (i >= 0) c.effects.splice(i, 1);
+          else {
+            if (c.effects.length >= 6) { toast("En fazla 6 efekt birleştirilebilir"); return; }
+            c.effects.push(key);
+          }
+        }
+        updInfo();
         renderTimeline();
-        if (!state.playing && key !== "none") play();
+        if (!state.playing && c.effects.length) play();
       },
     });
   });
@@ -4071,7 +4106,7 @@ function projectData() {
       mediaId: c.mediaId, type: c.type, name: c.name, natDur: c.natDur,
       in: c.in, out: c.out, speed: c.speed, volume: c.volume,
       pitchShift: c.pitchShift, tx: c.tx, ty: c.ty, scale: c.scale,
-      filter: c.filter, adjust: { ...c.adjust }, effect: c.effect, trans: { ...c.trans },
+      filter: c.filter, adjust: { ...c.adjust }, effects: [...(c.effects || [])], trans: { ...c.trans },
     })),
     /* el/url DOM nesneleri IDB'ye yazılamaz; medya mediaId ile geri yüklenir */
     overlays: state.overlays.map(o => { const { el, url, ...rest } = o; return { ...rest }; }),
@@ -4167,6 +4202,8 @@ async function openProject(rec) {
     c.id = idSeq++;
     c.adjust = { ...cd.adjust };
     c.trans = { ...cd.trans };
+    /* eski projeler tekil "effect" alanı kullanır */
+    c.effects = cd.effects ? [...cd.effects] : (cd.effect && cd.effect !== "none" ? [cd.effect] : []);
     if (cd.type === "image") c.thumb = makeThumb(el, el.naturalWidth, el.naturalHeight);
     else grabThumb(c);
     state.clips.push(c);
@@ -4409,7 +4446,7 @@ async function applyTemplate(tpl) {
   if (per * n > MAX_T) per = Math.max(MAX_T / n, .4);
   const styleClip = c => {
     c.filter = st2.filter;
-    if (st2.effect !== "none") c.effect = st2.effect;
+    c.effects = st2.effect !== "none" ? [st2.effect] : [];
     const maxOut = c.type === "image" ? c.in + 600 : c.natDur;
     c.out = clamp(c.in + per * c.speed, c.in + .2, maxOut);
     c.trans = { type: st2.trans, dur: Math.min(.5, per / 2) };
