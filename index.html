@@ -874,8 +874,12 @@ const clipDur = c => (c.out - c.in) / c.speed;
 const clipsDur = () => state.clips.reduce((a, c) => a + clipDur(c), 0);
 const contentEnd = () => state.leadGap + clipsDur();   // kliplerin bittiği mutlak an
 const musicDur = m => (m.out - m.in) / m.speed;
-/* proje süresi: müzik kliplerden uzunsa video son karede donarak müziğin sonuna kadar uzar */
-const totalDur = () => Math.max(contentEnd(), ...state.musics.map(m => m.start + musicDur(m)), 0);
+/* proje süresi = videonun (kliplerin) bittiği an. Müzik daha uzunsa
+   video sonunda kesilir (gösterge müziğin değil videonun süresini yazar).
+   Klip yoksa müziğin sonu esas alınır (yalnızca müzikli boş proje). */
+const totalDur = () => state.clips.length
+  ? contentEnd()
+  : Math.max(...state.musics.map(m => m.start + musicDur(m)), 0);
 /* Seçili klip yoksa oynatma çubuğunun altındaki klibi hedefle */
 const targetClip = () => state.selClip || (locate(state.t) || {}).clip || null;
 const clamp = (v, a, b) => Math.min(Math.max(v, a), b);
