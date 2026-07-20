@@ -1799,47 +1799,79 @@ function tick(now) {
 }
 requestAnimationFrame(t => { lastTick = t; tick(t); });
 
+/* Ana saat modeli: state.t oynatılan medyanın GERÇEK konumundan okunur.
+   Böylece her karede currentTime'ı geri çekmeye (seek) gerek kalmaz —
+   seek fırtınası ve ondan gelen ses kesilmesi/cızırtısı ortadan kalkar.
+   Bir eleman yalnızca yeni etkinleştiğinde (veya kullanıcı sardığında)
+   bir kez sarılır; sonra serbest çalıp saati kendisi taşır. */
 function syncMedia() {
   const loc = locate(state.t);
-  /* müzik videodan uzunsa: klipler bitti, son kare donuk kalır */
   const beyondClips = state.t >= contentEnd() - .02;
+  let master = null;   // { read: () => saniye cinsinden proje zamanı }
+
   for (const c of state.clips) {
     if (c.type !== "video") continue;
     const v = c.el;
     if (loc && c === loc.clip && state.playing && !beyondClips) {
-      const target = c.in + loc.offset * c.speed;
-      /* tarayıcı sınırları dışındaki hızlarda sürüklenme sık sarma ile düzeltilir */
       v.playbackRate = clamp(c.speed, .0625, 16);
       if ("preservesPitch" in v) v.preservesPitch = !c.pitchShift;
       else if ("webkitPreservesPitch" in v) v.webkitPreservesPitch = !c.pitchShift;
       v.volume = clamp(c.volume, 0, 1);
       v.muted = c.volume === 0;
-      if (Math.abs(v.currentTime - target) > .25) v.currentTime = target;
-      if (v.paused) v.play().catch(() => {});
-    } else if (!v.paused) v.pause();
+      const target = c.in + loc.offset * c.speed;
+      const justActive = v.paused || !v._pcActive;
+      if (justActive) { try { v.currentTime = target; } catch (_) {} v.play().catch(() => {}); }
+      v._pcActive = true;
+      /* aktif ana klip = ana saat (kendi zamanını proje zamanına eşler) */
+      const base = clipStart(c);
+      master = { read: () => base + (v.currentTime - c.in) / c.speed, lo: base, hi: base + clipDur(c) };
+    } else {
+      v._pcActive = false;
+      if (!v.paused) v.pause();
+    }
   }
-  /* bindirme (PiP) videoları */
+  /* bindirme (PiP) videoları — ikincil; başlangıçta sarılır, sonra serbest */
   for (const o of state.overlays) {
     if (o.kind !== "pip" || o.type !== "video") continue;
     const v = o.el;
     if (state.playing && state.t >= o.start && state.t < o.start + o.dur) {
-      const target = o.in + (state.t - o.start);
       v.playbackRate = 1;
       v.volume = clamp(o.volume, 0, 1);
       v.muted = o.volume === 0;
-      if (Math.abs(v.currentTime - target) > .25) v.currentTime = target;
-      if (v.paused) v.play().catch(() => {});
-    } else if (!v.paused) v.pause();
+      const target = o.in + (state.t - o.start);
+      const justActive = v.paused || !v._pcActive;
+      if (justActive) { try { v.currentTime = target; } catch (_) {} v.play().catch(() => {}); }
+      else if (Math.abs(v.currentTime - target) > .35) { try { v.currentTime = target; } catch (_) {} }
+      v._pcActive = true;
+    } else {
+      v._pcActive = false;
+      if (!v.paused) v.pause();
+    }
   }
   for (const m of state.musics) {
     const active = state.playing && state.t >= m.start && state.t < m.start + musicDur(m);
     if (active) {
-      const target = m.in + (state.t - m.start) * m.speed;
       m.el.playbackRate = clamp(m.speed, .0625, 16);
       m.el.volume = clamp(m.volume, 0, 1);
-      if (Math.abs(m.el.currentTime - target) > .3) m.el.currentTime = target;
-      if (m.el.paused) m.el.play().catch(() => {});
-    } else if (!m.el.paused) m.el.pause();
+      const target = m.in + (state.t - m.start) * m.speed;
+      const justActive = m.el.paused || !m.el._pcActive;
+      if (justActive) { try { m.el.currentTime = target; } catch (_) {} m.el.play().catch(() => {}); }
+      else if (Math.abs(m.el.currentTime - target) > .35) { try { m.el.currentTime = target; } catch (_) {} }
+      m.el._pcActive = true;
+      /* aktif video yoksa müzik ana saat olur */
+      if (!master) master = { read: () => m.start + (m.el.currentTime - m.in) / m.speed, lo: m.start, hi: m.start + musicDur(m) };
+    } else {
+      m.el._pcActive = false;
+      if (!m.el.paused) m.el.pause();
+    }
+  }
+
+  /* state.t'yi ana saatten oku (küçük, mantıklı bir düzeltme aralığında) */
+  if (master) {
+    const nt = master.read();
+    if (isFinite(nt) && nt >= master.lo - .05 && nt <= master.hi + .05 && Math.abs(nt - state.t) < .4) {
+      state.t = clamp(nt, 0, totalDur());
+    }
   }
 }
 
