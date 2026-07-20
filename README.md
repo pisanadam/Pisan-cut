@@ -37,7 +37,7 @@ Ayarlar → Pages → dalı seç → yayınla.
 - 📚 **Müzik kütüphaneleri**: Cihazından eklemenin yanında 5 çevrimiçi kaynakta ara, dinle ve tek dokunuşla projeye ekle — 🎧 Phonk sekmesi hazır kategorilerle (Popüler, Drift, Brazilian, Agresif, Chill, Sigma) sekme açılır açılmaz popüler phonk parçalarını listeler; — İnternet Arşivi (archive.org), Openverse ve Wikimedia Commons tam şarkı verir; iTunes 30 sn önizleme verir (döngüleme ile uzatılabilir); eklenen parçalar projeyle birlikte cihazına kaydedilir
 - ↩️ **Geri al / Yinele**: PC'de Ctrl+Z geri alır, Ctrl+X (veya Ctrl+Y / Ctrl+Shift+Z) yineler; mobilde üst çubuktaki ↩ ↪ düğmeleri — 50 adıma kadar
 - ⬛ **En-boy oranı**: 9:16, 16:9, 1:1, 4:5
-- 🎚️ **Dışa aktarma ayarları**: Çözünürlük (480p / 720p / 1080p / 2K β / 4K β) ve kare hızı (24 / 30 / 60 / 90 β / 120 β fps) seçimi, tahmini dosya boyutuyla; seçimler projeyle birlikte kaydedilir. β işaretli seçenekler beta'dır — bazı telefonlarda stabil çalışmayabilir
+- 🎚️ **Dışa aktarma ayarları**: Format (**MP4** / WebM), çözünürlük (480p / 720p / 1080p / 2K β / 4K β) ve kare hızı (24 / 30 / 60 / 90 β / 120 β fps) seçimi, tahmini dosya boyutuyla; seçimler projeyle birlikte kaydedilir. MP4 varsayılandır (en uyumlu): H.264 + AAC ile paketlenir, cihaz desteklemezse otomatik WebM'e düşer. β işaretli seçenekler beta'dır — bazı telefonlarda stabil çalışmayabilir
 - 🔍 **Video Upscale (aç/kapa)**: Açıkken çıktı %50 büyütülüp yüksek kaliteli ölçekleme ile kodlanır; yazılar, çıkartmalar ve efektler yüksek çözünürlükte yeniden çizildiği için gerçekten daha keskin çıkar
 - 🎞 **Kare Üretici (aç/kapa)**: 60/90/120 fps dışa aktarmada düşük fps'li kaynaklar için ara kareler harmanlanarak üretilir (echo frame blending) — hareket akıcılaşır; yalnızca 60 fps ve üstünde etkilidir
 - 📤 **Hızlı render (CapCut tarzı)**: WebCodecs destekleyen tarayıcılarda video kare kare offline kodlanır, ses offline mikslenir — önizleme taksa bile çıktı her zaman akıcıdır ve çoğu cihazda gerçek zamandan hızlı biter. WebCodecs yoksa MediaRecorder ile gerçek zamanlı kayda düşer.
@@ -52,5 +52,5 @@ Ayarlar → Pages → dalı seç → yayınla.
 ## Sınırlamalar
 
 - Hızlı render WebCodecs gerektirir (Chrome/Edge/Android WebView 94+, Safari 16.4+ kısmi); yoksa dışa aktarma gerçek zamanlı sürer.
-- Kodek desteği tarayıcıya bağlıdır; çıktı genellikle WebM'dir (yedek yolda iOS Safari MP4 üretebilir).
+- MP4 çıktı H.264+AAC destekleyen cihazlarda üretilir (çoğu telefon/masaüstü); yoksa otomatik WebM'e düşer. Dosya içi MP4 muxer sıkıştırılmamış (tek mdat) ISO-BMFF üretir.
 - Projeler tarayıcının IndexedDB deposunda tutulur; tarayıcı verilerini/site verilerini silersen projeler de silinir ve başka cihazdan erişilemez.

@@ -748,6 +748,7 @@ const state = {
   fps: 30,
   upscale: false,    // açıkken çıktı %50 büyütülüp yüksek kaliteli ölçeklenir
   frameGen: false,   // kare üretici: 60+ fps'te ara kare harmanlama
+  format: "mp4",     // çıktı formatı: mp4 | webm
   exportW: 720,
   exportH: 1280,
   rendering: false,
@@ -805,7 +806,7 @@ function snapState() {
     overlays: state.overlays.map(o => ({ ...o })),
     musics: state.musics.map(m => ({ ...m })),
     aspect: state.aspect, resolution: state.resolution, fps: state.fps,
-    upscale: state.upscale, frameGen: state.frameGen, leadGap: state.leadGap,
+    upscale: state.upscale, frameGen: state.frameGen, format: state.format, leadGap: state.leadGap,
   };
 }
 function stateJson() { try { return JSON.stringify(projectData()); } catch (_) { return String(Math.random()); } }
@@ -827,6 +828,7 @@ function applySnap(s) {
   state.aspect = s.aspect; state.resolution = s.resolution; state.fps = s.fps;
   state.upscale = !!s.upscale;
   state.frameGen = !!s.frameGen;
+  state.format = s.format || "mp4";
   state.leadGap = s.leadGap || 0;
   if (aspectChanged) applyAspect();
   $("#emptyState").style.display = state.clips.length ? "none" : "flex";
@@ -3529,6 +3531,8 @@ $("#btnExport").onclick = () => {
   if (!state.clips.length) return;
   pause();
   openSheet("Dışa Aktar", body => {
+    subhead(body, "Format");
+    chipRow(body, { mp4: "MP4", webm: "WebM" }, state.format, k => { state.format = k; });
     subhead(body, "Çözünürlük");
     chipRow(body, RES_OPTS, String(state.resolution), k => {
       state.resolution = parseInt(k);
@@ -3634,23 +3638,10 @@ async function startExport() {
     state.musics.length > 0;
 
   if (window.VideoEncoder) {
-    let codec = null;
-    for (const c of ["vp09.00.10.08", "vp8"]) {
+    const plan = await buildExportPlan(hasAudio);
+    if (plan) {
       try {
-        const s = await VideoEncoder.isConfigSupported({ codec: c, width: state.exportW, height: state.exportH });
-        if (s.supported) { codec = c; break; }
-      } catch (_) {}
-    }
-    let opusOk = false;
-    if (window.AudioEncoder) {
-      try {
-        const s = await AudioEncoder.isConfigSupported({ codec: "opus", sampleRate: 48000, numberOfChannels: 2, bitrate: 128000 });
-        opusOk = !!s.supported;
-      } catch (_) {}
-    }
-    if (codec && (!hasAudio || opusOk)) {
-      try {
-        await fastRender(codec, hasAudio && opusOk);
+        await fastRender(plan);
         return;
       } catch (err) {
         finishExportUI();
@@ -3661,6 +3652,38 @@ async function startExport() {
     }
   }
   await realtimeExport();
+}
+
+/* çıktı planı: format tercihine göre desteklenen video/ses kodlayıcı +
+   kapsayıcı seçilir. MP4 istenip H.264 yoksa VP9-MP4, o da yoksa WebM'e
+   düşülür (gerçek telefonlarda H.264+AAC yolu kullanılır). */
+async function buildExportPlan(hasAudio) {
+  const W = state.exportW, H = state.exportH;
+  const vidSup = async c => { try { return (await VideoEncoder.isConfigSupported({ codec: c, width: W, height: H, bitrate: exportBitrate(), framerate: state.fps })).supported; } catch (_) { return false; } };
+  const audSup = async c => { if (!window.AudioEncoder) return false; try { return (await AudioEncoder.isConfigSupported({ codec: c, sampleRate: 48000, numberOfChannels: 2, bitrate: 128000 })).supported; } catch (_) { return false; } };
+
+  const AVC = ["avc1.4d0028", "avc1.42001f", "avc1.640028", "avc1.42e01f"];
+  let vEnc = null, vKind = null, container = null;
+
+  if (state.format === "mp4") {
+    for (const c of AVC) if (await vidSup(c)) { vEnc = c; vKind = "avc"; container = "mp4"; break; }
+    if (!vEnc && await vidSup("vp09.00.10.08")) { vEnc = "vp09.00.10.08"; vKind = "vp9"; container = "mp4"; }
+  }
+  if (!vEnc) {   // webm istendi ya da mp4 için codec yok
+    if (await vidSup("vp09.00.10.08")) { vEnc = "vp09.00.10.08"; vKind = "vp9"; }
+    else if (await vidSup("vp8")) { vEnc = "vp8"; vKind = "vp8"; }
+    container = "webm";
+  }
+  if (!vEnc) return null;
+
+  let aEnc = null, aKind = null;
+  if (hasAudio) {
+    if (container === "mp4" && await audSup("mp4a.40.2")) { aEnc = "mp4a.40.2"; aKind = "aac"; }
+    else if (await audSup("opus")) { aEnc = "opus"; aKind = "opus"; }
+    /* MP4 + yalnızca Opus destekleniyorsa Opus-in-MP4 kullanılır */
+  }
+  if (state.format === "mp4" && container !== "mp4") toast("Bu cihazda MP4 kodlama yok, WebM üretiliyor");
+  return { vEnc, vKind, container, aEnc, aKind };
 }
 
 /* ---------- hızlı render: yardımcılar ---------- */
@@ -3897,11 +3920,178 @@ const OPUS_HEAD_DEFAULT = (() => {
   return b;             // gain=0, mapping=0
 })();
 
+/* ---------- minimal MP4 (ISO-BMFF) muxer ----------
+   Sıkıştırılmamış (tek mdat) MP4. Video: H.264 (avc1/avcC) veya
+   VP9 (vp09/vpcC). Ses: AAC (mp4a/esds) veya Opus (Opus/dOps).
+   Kutu yapısı ve stco ofsetleri VP9+Opus ile uçtan uca doğrulanır;
+   gerçek cihazlarda aynı yapı H.264+AAC ile kullanılır. */
+function mkMp4(opts) {
+  const { width, height, vcodec, vdesc, acodec, adesc, sampleRate = 48000, channels = 2 } = opts;
+  const VTS = 90000;
+  const vSamples = [], aSamples = [];
+  const enc = new TextEncoder();
+
+  const u32 = n => { const b = new Uint8Array(4); new DataView(b.buffer).setUint32(0, n >>> 0); return b; };
+  const u16 = n => { const b = new Uint8Array(2); new DataView(b.buffer).setUint16(0, n & 0xffff); return b; };
+  const cat = arrs => {
+    let n = 0; for (const a of arrs) n += a.length;
+    const o = new Uint8Array(n); let p = 0;
+    for (const a of arrs) { o.set(a, p); p += a.length; }
+    return o;
+  };
+  const box = (type, ...parts) => {
+    const payload = cat(parts.map(p => p instanceof Uint8Array ? p : cat(p)));
+    return cat([u32(payload.length + 8), enc.encode(type), payload]);
+  };
+  const fbox = (type, ver, flags, ...parts) =>
+    box(type, new Uint8Array([ver, (flags >> 16) & 255, (flags >> 8) & 255, flags & 255]), ...parts);
+
+  return {
+    addVideo(chunk) {
+      const d = new Uint8Array(chunk.byteLength); chunk.copyTo(d);
+      const dur = chunk.duration ? Math.round(chunk.duration / 1e6 * VTS) : Math.round(VTS / 30);
+      vSamples.push({ data: d, dur, key: chunk.type === "key" });
+    },
+    addAudio(chunk) {
+      const d = new Uint8Array(chunk.byteLength); chunk.copyTo(d);
+      const dur = chunk.duration ? Math.round(chunk.duration / 1e6 * sampleRate) : 1024;
+      aSamples.push({ data: d, dur });
+    },
+    finish() {
+      const hasAudio = aSamples.length > 0;
+      const vBytes = cat(vSamples.map(s => s.data));
+      const aBytes = hasAudio ? cat(aSamples.map(s => s.data)) : new Uint8Array(0);
+
+      const ftyp = box("ftyp", enc.encode("isom"), u32(0x200), enc.encode("isomiso2avc1mp41"));
+      const mdatSize = 8 + vBytes.length + aBytes.length;
+      const mdat = cat([u32(mdatSize), enc.encode("mdat"), vBytes, aBytes]);
+      const vChunkOff = ftyp.length + 8;
+      const aChunkOff = vChunkOff + vBytes.length;
+
+      const vDurTotal = vSamples.reduce((a, s) => a + s.dur, 0);
+      const aDurTotal = aSamples.reduce((a, s) => a + s.dur, 0);
+      const durMs = Math.round((vDurTotal / VTS) * 1000);
+
+      /* --- stbl kutuları --- */
+      const stts = samples => {
+        const runs = [];
+        for (const s of samples) {
+          const last = runs[runs.length - 1];
+          if (last && last.dur === s.dur) last.count++;
+          else runs.push({ count: 1, dur: s.dur });
+        }
+        return fbox("stts", 0, 0, u32(runs.length), ...runs.map(r => cat([u32(r.count), u32(r.dur)])));
+      };
+      const stsz = samples => fbox("stsz", 0, 0, u32(0), u32(samples.length), ...samples.map(s => u32(s.data.length)));
+      const stsc = fbox("stsc", 0, 0, u32(1), cat([u32(1), u32(0), u32(1)]));  // sonradan doldurulur
+      const stscN = n => fbox("stsc", 0, 0, u32(1), cat([u32(1), u32(n), u32(1)]));
+      const stco = off => fbox("stco", 0, 0, u32(1), u32(off));
+
+      /* video sample entry */
+      let vEntry;
+      if (vcodec === "avc") {
+        vEntry = box("avc1",
+          new Uint8Array(6), u16(1),                 // reserved + data_ref_index
+          new Uint8Array(16),                        // pre-defined/reserved
+          u16(width), u16(height),
+          u32(0x00480000), u32(0x00480000),          // 72dpi h/v
+          u32(0), u16(1),                            // reserved, frame_count
+          new Uint8Array(32),                        // compressorname
+          u16(0x0018), u16(0xffff),                  // depth, pre-defined
+          box("avcC", vdesc));
+      } else {
+        vEntry = box("vp09",
+          new Uint8Array(6), u16(1), new Uint8Array(16),
+          u16(width), u16(height),
+          u32(0x00480000), u32(0x00480000), u32(0), u16(1),
+          new Uint8Array(32), u16(0x0018), u16(0xffff),
+          fbox("vpcC", 1, 0, new Uint8Array([1, 8, 0, 1, 1, 1]), u16(0)));  // profil0, 8bit, bt709
+      }
+      const vStbl = box("stbl",
+        fbox("stsd", 0, 0, u32(1), vEntry),
+        stts(vSamples), stscN(vSamples.length), stsz(vSamples), stco(vChunkOff),
+        (() => {   // stss (anahtar kareler)
+          const keys = [];
+          vSamples.forEach((s, i) => { if (s.key) keys.push(i + 1); });
+          return fbox("stss", 0, 0, u32(keys.length), ...keys.map(u32));
+        })());
+
+      const vTrak = box("trak",
+        fbox("tkhd", 0, 7, u32(0), u32(0), u32(1), u32(0), u32(durMs),
+          new Uint8Array(8), u16(0), u16(0), u16(0), u16(0),
+          cat([u32(0x00010000), u32(0), u32(0), u32(0), u32(0x00010000), u32(0), u32(0), u32(0), u32(0x40000000)]),
+          u32(width << 16), u32(height << 16)),
+        box("mdia",
+          fbox("mdhd", 0, 0, u32(0), u32(0), u32(VTS), u32(vDurTotal), u16(0x55c4), u16(0)),
+          fbox("hdlr", 0, 0, u32(0), enc.encode("vide"), new Uint8Array(12), enc.encode("VideoHandler\0")),
+          box("minf",
+            box("vmhd", new Uint8Array([0, 0, 0, 1]), new Uint8Array(8)),
+            box("dinf", fbox("dref", 0, 0, u32(1), fbox("url ", 0, 1))),
+            vStbl)));
+
+      const traks = [vTrak];
+      if (hasAudio) {
+        let aEntry;
+        if (acodec === "aac") {
+          /* esds: ES_Descriptor > DecoderConfig(0x40=AAC) > DecSpecificInfo(ASC) */
+          const asc = adesc;
+          const decSpec = cat([new Uint8Array([0x05, asc.length]), asc]);
+          const decCfg = cat([new Uint8Array([0x04, 13 + decSpec.length, 0x40, 0x15,
+            0, 0, 0, 0, 0, 0, 0, 0, 0]), decSpec]);
+          const esd = cat([new Uint8Array([0x03, 3 + decCfg.length + 3, 0, 0, 0]), decCfg,
+            new Uint8Array([0x06, 1, 2])]);
+          aEntry = box("mp4a",
+            new Uint8Array(6), u16(1), new Uint8Array(8),
+            u16(channels), u16(16), u32(0), u32(sampleRate << 16),
+            fbox("esds", 0, 0, esd));
+        } else {
+          /* Opus: dOps (OpusSpecificBox), OpusHead'ten türetilir */
+          const oh = adesc || OPUS_HEAD_DEFAULT;
+          const preSkip = oh[10] | (oh[11] << 8);
+          const dOps = box("dOps", new Uint8Array([
+            0, channels, (preSkip >> 8) & 255, preSkip & 255,
+            (sampleRate >> 24) & 255, (sampleRate >> 16) & 255, (sampleRate >> 8) & 255, sampleRate & 255,
+            0, 0, 0]));
+          aEntry = box("Opus",
+            new Uint8Array(6), u16(1), new Uint8Array(8),
+            u16(channels), u16(16), u32(0), u32(sampleRate << 16),
+            dOps);
+        }
+        const aStbl = box("stbl",
+          fbox("stsd", 0, 0, u32(1), aEntry),
+          stts(aSamples), stscN(aSamples.length), stsz(aSamples), stco(aChunkOff));
+        traks.push(box("trak",
+          fbox("tkhd", 0, 7, u32(0), u32(0), u32(2), u32(0), u32(durMs),
+            new Uint8Array(8), u16(0), u16(0), u16(0x0100), u16(0),
+            cat([u32(0x00010000), u32(0), u32(0), u32(0), u32(0x00010000), u32(0), u32(0), u32(0), u32(0x40000000)]),
+            u32(0), u32(0)),
+          box("mdia",
+            fbox("mdhd", 0, 0, u32(0), u32(0), u32(sampleRate), u32(aDurTotal), u16(0x55c4), u16(0)),
+            fbox("hdlr", 0, 0, u32(0), enc.encode("soun"), new Uint8Array(12), enc.encode("SoundHandler\0")),
+            box("minf",
+              box("smhd", new Uint8Array(8)),
+              box("dinf", fbox("dref", 0, 0, u32(1), fbox("url ", 0, 1))),
+              aStbl))));
+      }
+
+      const moov = box("moov",
+        fbox("mvhd", 0, 0, u32(0), u32(0), u32(1000), u32(durMs),
+          u32(0x00010000), u16(0x0100), u16(0), u32(0), u32(0),
+          cat([u32(0x00010000), u32(0), u32(0), u32(0), u32(0x00010000), u32(0), u32(0), u32(0), u32(0x40000000)]),
+          new Uint8Array(24), u32(traks.length + 1)),
+        ...traks);
+
+      return new Blob([ftyp, mdat, moov], { type: "video/mp4" });
+    },
+  };
+}
+
 /* ---------- hızlı render (kare kare, offline) ---------- */
-async function fastRender(codec, withAudio) {
+async function fastRender(plan) {
   const total = totalDur();
   const fps = state.fps;
   const frames = Math.max(Math.ceil(total * fps), 1);
+  const withAudio = !!plan.aEnc;
   exportModal("Render alınıyor…", "Kare kare işleniyor — takılma olmadan, tam kalitede.");
 
   state.rendering = true;
@@ -3909,33 +4099,33 @@ async function fastRender(codec, withAudio) {
   setCanvasResolution(true);
 
   let opusHead = OPUS_HEAD_DEFAULT;
-  let audioIncluded = false;
-  const muxer = mkWebm({
+  let audioIncluded = false, audioDesc = null, videoDesc = null;
+  const isMp4 = plan.container === "mp4";
+  const webmMuxer = isMp4 ? null : mkWebm({
     width: state.exportW, height: state.exportH,
-    codecId: codec === "vp8" ? "V_VP8" : "V_VP9",
+    codecId: plan.vKind === "vp8" ? "V_VP8" : "V_VP9",
     durationMs: total * 1000,
   });
+  /* MP4 muxer video açıklamasını (avcC) ilk karede alır; bu yüzden
+     muxer finish sırasında değil, kodlama sonunda kurulur */
+  const mp4Chunks = { v: [], a: [] };
 
   /* 1) ses: video kodlamasıyla PARALEL mikslenir ve kodlanır */
   const audioJob = !withAudio ? Promise.resolve(null) : (async () => {
     const audioBuffer = await mixAudioOffline(total).catch(() => null);
     if (!audioBuffer || exportAbort) return null;
     const chunks = [];
-    let head = null;
+    let desc = null;
     const aenc = new AudioEncoder({
       output: (chunk, meta) => {
-        const desc = meta && meta.decoderConfig && meta.decoderConfig.description;
-        if (desc) {
-          head = desc instanceof ArrayBuffer
-            ? new Uint8Array(desc)
-            : new Uint8Array(desc.buffer, desc.byteOffset, desc.byteLength);
-        }
+        const d = meta && meta.decoderConfig && meta.decoderConfig.description;
+        if (d && !desc) desc = d instanceof ArrayBuffer ? new Uint8Array(d) : new Uint8Array(d.buffer, d.byteOffset, d.byteLength);
         chunks.push(chunk);
       },
       error: e => console.error("AudioEncoder:", e),
     });
-    aenc.configure({ codec: "opus", sampleRate: 48000, numberOfChannels: 2, bitrate: 128000 });
-    const sr = 48000, block = 960;   // 20 ms opus çerçevesi
+    aenc.configure({ codec: plan.aEnc, sampleRate: 48000, numberOfChannels: 2, bitrate: 128000 });
+    const sr = 48000, block = plan.aKind === "aac" ? 1024 : 960;
     const ch0 = audioBuffer.getChannelData(0);
     const ch1 = audioBuffer.numberOfChannels > 1 ? audioBuffer.getChannelData(1) : ch0;
     const maxSamples = Math.min(audioBuffer.length, Math.ceil(total * sr));
@@ -3954,22 +4144,24 @@ async function fastRender(codec, withAudio) {
     }
     await aenc.flush();
     aenc.close();
-    return { chunks, head };
+    return { chunks, desc };
   })();
 
-  /* 2) video: her kare kesin zamana sarılıp kodlanır.
-     Aynı klip içinde TEK eleman kullanılır (iki elemanın bitişik
-     hedeflere farklı kare çözmesi çıktıda titremeye yol açabiliyordu);
-     hız, donanım kodlayıcı + paralel ses + klip sınırında ön-ısıtma
-     ile sağlanır. */
+  /* 2) video: her kare kesin zamana sarılıp kodlanır. */
   let encError = null;
   const venc = new VideoEncoder({
-    output: chunk => muxer.addVideo(chunk),
+    output: (chunk, meta) => {
+      const d = meta && meta.decoderConfig && meta.decoderConfig.description;
+      if (d && !videoDesc) videoDesc = d instanceof ArrayBuffer ? new Uint8Array(d) : new Uint8Array(d.buffer, d.byteOffset, d.byteLength);
+      if (isMp4) mp4Chunks.v.push(chunk);
+      else webmMuxer.addVideo(chunk);
+    },
     error: e => { encError = e; },
   });
   const vconf = {
-    codec, width: state.exportW, height: state.exportH,
+    codec: plan.vEnc, width: state.exportW, height: state.exportH,
     bitrate: exportBitrate(), framerate: fps,
+    avc: plan.vKind === "avc" ? { format: "avc" } : undefined,
   };
   /* cihazın donanım kodlayıcısını zorla; yoksa yazılım "quality" modu
      (realtime modu yazılım kodlayıcıda parlama/pompalama yapabiliyor) */
@@ -4048,14 +4240,32 @@ async function fastRender(codec, withAudio) {
   const audioRes = await audioJob;
   if (audioRes && audioRes.chunks.length) {
     audioIncluded = true;
-    if (audioRes.head) opusHead = audioRes.head;
-    for (const c of audioRes.chunks) muxer.addAudio(c);
+    audioDesc = audioRes.desc;
+    if (plan.aKind === "opus" && audioRes.desc) opusHead = audioRes.desc;
   }
   if (exportAbort) throw new Error("abort");
 
-  const blob = muxer.finish({ hasAudio: audioIncluded, opusHead });
+  let blob, ext;
+  if (isMp4) {
+    const mux = mkMp4({
+      width: state.exportW, height: state.exportH,
+      vcodec: plan.vKind === "avc" ? "avc" : "vp9",
+      vdesc: videoDesc || new Uint8Array(0),
+      acodec: audioIncluded ? plan.aKind : null,
+      adesc: audioIncluded ? audioDesc : null,
+      sampleRate: 48000, channels: 2,
+    });
+    for (const c of mp4Chunks.v) mux.addVideo(c);
+    if (audioIncluded) for (const c of audioRes.chunks) mux.addAudio(c);
+    blob = mux.finish();
+    ext = "mp4";
+  } else {
+    if (audioIncluded) for (const c of audioRes.chunks) webmMuxer.addAudio(c);
+    blob = webmMuxer.finish({ hasAudio: audioIncluded, opusHead });
+    ext = "webm";
+  }
   finishExportUI();
-  exportDone(blob, "webm");
+  exportDone(blob, ext);
   seekTo(0, true);
 }
 
@@ -4137,6 +4347,7 @@ function projectData() {
     fps: state.fps,
     upscale: state.upscale,
     frameGen: state.frameGen,
+    format: state.format,
     leadGap: state.leadGap,
     clips: state.clips.map(c => ({
       mediaId: c.mediaId, type: c.type, name: c.name, natDur: c.natDur,
@@ -4199,6 +4410,7 @@ async function newProject(tool) {
   state.fps = 30;
   state.upscale = false;
   state.frameGen = false;
+  state.format = "mp4";
   applyAspect();
   clearHistory();
   pendingTool = tool || null;
@@ -4215,6 +4427,7 @@ async function openProject(rec) {
   state.fps = rec.data.fps || 30;
   state.upscale = !!rec.data.upscale;
   state.frameGen = !!rec.data.frameGen;
+  state.format = rec.data.format || "mp4";
   state.leadGap = rec.data.leadGap || 0;
   applyAspect();
   toast("Proje açılıyor…");
