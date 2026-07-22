@@ -3096,9 +3096,152 @@ async function archiveSearch(q, popular) {
   }));
 }
 
+/* ---- YouTube: herkese açık Piped / Invidious örnekleri üzerinden ses ----
+   YouTube resmi/CORS-uyumlu bir indirme vermez; açık kaynak Piped ve Invidious
+   örnekleri proxy olarak kullanılır. Örnekler zamanla değişir, bu yüzden birden
+   çok tanesi denenir ve çalışan öne alınır. Yalnızca telifsiz/izinli içerik. */
+/* örnek adresleri zamanla değişir; canlı listeleri çalışma anında çekeriz,
+   erişilemezse küçük gömülü tohum listeye düşeriz. Oturum boyunca önbelleklenir. */
+const YT_PIPED_SEED = [
+  "https://api.piped.private.coffee",
+  "https://pipedapi.kavin.rocks",
+  "https://pipedapi.adminforge.de",
+];
+const YT_INV_SEED = [
+  "https://inv.nadeko.net",
+  "https://invidious.nerdvpn.de",
+  "https://yewtu.be",
+];
+let _ytPipedList = null, _ytInvList = null;   // önbelleğe alınmış birleşik listeler
+let _ytOkPiped = null, _ytOkInv = null;       // en son çalışan örnek (öne alınır)
+
+async function ytPipedBases() {
+  if (_ytPipedList) return _ytPipedList;
+  try {
+    const ctrl = new AbortController();
+    const to = setTimeout(() => ctrl.abort(), 8000);
+    const j = await (await fetch("https://piped-instances.kavin.rocks/", { signal: ctrl.signal })).json();
+    clearTimeout(to);
+    const live = (j || []).map(x => x.api_url).filter(Boolean);
+    _ytPipedList = [...new Set([...live, ...YT_PIPED_SEED])];
+  } catch (_) { _ytPipedList = YT_PIPED_SEED.slice(); }
+  return _ytPipedList;
+}
+async function ytInvBases() {
+  if (_ytInvList) return _ytInvList;
+  try {
+    const ctrl = new AbortController();
+    const to = setTimeout(() => ctrl.abort(), 8000);
+    const j = await (await fetch("https://api.invidious.io/instances.json", { signal: ctrl.signal })).json();
+    clearTimeout(to);
+    const live = (j || [])
+      .filter(x => x[1] && x[1].type === "https" && x[1].api !== false)
+      .map(x => x[1].uri).filter(Boolean);
+    _ytInvList = [...new Set([...live, ...YT_INV_SEED])];
+  } catch (_) { _ytInvList = YT_INV_SEED.slice(); }
+  return _ytInvList;
+}
+
+/* örnekleri paralel yarıştırır: ilk geçerli JSON'u döndürür, kazananı hatırlar.
+   Sıralı denemek yerine yarıştırmak, gecikmeyi en yavaş hatayla değil en hızlı
+   çalışan örnekle sınırlar (birçok örnek kapalıyken kritik). */
+async function ytTryJson(bases, path, remember) {
+  const order = remember && remember.val
+    ? [remember.val, ...bases.filter(b => b !== remember.val)]
+    : bases.slice();
+  const ctrls = [];
+  const attempt = (base) => {
+    const ctrl = new AbortController();
+    ctrls.push(ctrl);
+    const to = setTimeout(() => ctrl.abort(), 9000);
+    return fetch(base + path, { signal: ctrl.signal }).then(async r => {
+      clearTimeout(to);
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return { base, data: await r.json() };
+    });
+  };
+  try {
+    const winner = await Promise.any(order.map(attempt));
+    if (remember) remember.val = winner.base;
+    return winner;
+  } catch (_) {
+    return null;                                  // tüm örnekler başarısız
+  } finally {
+    ctrls.forEach(c => { try { c.abort(); } catch (_) {} });  // kaybeden istekleri iptal et
+  }
+}
+
+/* link / ID ayrıştırıcı: YouTube değilse null (metin, arama sorgusu sayılır) */
+function ytParseId(q) {
+  q = (q || "").trim();
+  if (/^[\w-]{11}$/.test(q)) return q;
+  let m;
+  if ((m = q.match(/[?&]v=([\w-]{11})/))) return m[1];
+  if ((m = q.match(/youtu\.be\/([\w-]{11})/))) return m[1];
+  if ((m = q.match(/\/(?:shorts|embed|live)\/([\w-]{11})/))) return m[1];
+  return null;
+}
+
+/* videodan indirilebilir (CORS'lu, proxylenmiş) ses URL'si üretir */
+async function ytResolveAudio(id) {
+  // 1) Piped: /streams/{id} → audioStreams (örnek proxy'sinden CORS'lu gelir)
+  const p = { val: _ytOkPiped };
+  const ps = await ytTryJson(await ytPipedBases(), "/streams/" + id, p);
+  _ytOkPiped = p.val;
+  if (ps && Array.isArray(ps.data.audioStreams) && ps.data.audioStreams.length) {
+    const best = ps.data.audioStreams.slice()
+      .sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0))[0];
+    if (best && best.url) return best.url;
+  }
+  // 2) Invidious (yedek): /api/v1/videos/{id} → latest_version proxy'si (local=true → CORS)
+  const iv = { val: _ytOkInv };
+  const is = await ytTryJson(await ytInvBases(), "/api/v1/videos/" + id, iv);
+  _ytOkInv = iv.val;
+  if (is) {
+    const fmts = (is.data.adaptiveFormats || []).filter(f => /audio/i.test(f.type || ""));
+    fmts.sort((a, b) => (parseInt(b.bitrate) || 0) - (parseInt(a.bitrate) || 0));
+    const best = fmts[0];
+    if (best && best.itag)
+      return is.base + "/latest_version?id=" + id + "&itag=" + best.itag + "&local=true";
+  }
+  throw new Error("ses bulunamadı");
+}
+
+function ytItem(id, title, artist) {
+  return { title: title || id, artist: artist || "YouTube", resolve: () => ytResolveAudio(id) };
+}
+
 /* çevrimiçi telifsiz müzik kütüphaneleri */
 const MUSIC_LIBS = {
   device: { name: "📱 Cihazım" },
+  youtube: {
+    name: "▶️ YouTube",
+    async search(q) {
+      const id = ytParseId(q);
+      if (id) return [ytItem(id, "🔗 YouTube videosu · " + id, "YouTube")];
+      // 1) Piped araması
+      const p = { val: _ytOkPiped };
+      const ps = await ytTryJson(await ytPipedBases(), "/search?q=" + encodeURIComponent(q) + "&filter=videos", p);
+      if (ps && Array.isArray(ps.data.items) && ps.data.items.length) {
+        _ytOkPiped = p.val;
+        return ps.data.items
+          .filter(x => x.url && /[?&]v=([\w-]{11})/.test(x.url))
+          .slice(0, 15)
+          .map(x => ytItem(x.url.match(/[?&]v=([\w-]{11})/)[1], x.title, x.uploaderName || ""));
+      }
+      // 2) Invidious araması (yedek)
+      const iv = { val: _ytOkInv };
+      const is = await ytTryJson(await ytInvBases(), "/api/v1/search?type=video&q=" + encodeURIComponent(q), iv);
+      if (is && Array.isArray(is.data) && is.data.length) {
+        _ytOkInv = iv.val;
+        return is.data
+          .filter(x => x.videoId)
+          .slice(0, 15)
+          .map(x => ytItem(x.videoId, x.title, x.author || ""));
+      }
+      return [];
+    },
+  },
   phonk: {
     name: "🎧 Phonk",
     presets: [
@@ -3218,12 +3361,18 @@ function openMusicSheet() {
       }
       const search = document.createElement("input");
       search.className = "fxSearch";
-      search.placeholder = "🔍 Parça ara… (Enter)";
+      search.placeholder = lib === "youtube" ? "🔍 Ara ya da YouTube linki yapıştır" : "🔍 Parça ara… (Enter)";
       content.appendChild(search);
       if (lib === "itunes") {
         const warn = document.createElement("p");
         warn.style.cssText = "font-size:10px;color:var(--dim);margin:4px 0 6px";
         warn.textContent = "⚠️ Apple yalnızca 30 saniyelik önizleme verir. Tam şarkılar için İnternet Arşivi veya Openverse'ü dene; ya da parçayı ekledikten sonra çubuğuna dokunup \"Video sonuna kadar döngüle\" ile tekrarlat.";
+        content.appendChild(warn);
+      }
+      if (lib === "youtube") {
+        const warn = document.createElement("p");
+        warn.style.cssText = "font-size:10px;color:var(--dim);margin:4px 0 6px";
+        warn.textContent = "▶️ Herkese açık Piped/Invidious örnekleri üzerinden çalışır — ara sıra yavaş/erişilemez olabilir; sonuç gelmezse başka parça ya da biraz sonra tekrar dene. Lütfen yalnızca telifsiz veya indirme izni olan içerik indir.";
         content.appendChild(warn);
       }
       const list = document.createElement("div");
