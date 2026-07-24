@@ -336,6 +336,10 @@
   }
   #homeScroll { flex:1; overflow-y:auto; padding:calc(14px + var(--safe-t)) 16px 20px; }
   #homeBrand { display:flex; align-items:center; gap:8px; font-weight:800; font-size:17px; margin-bottom:16px; }
+  #btnFullscreen {
+    width:38px; height:38px; border-radius:10px; background:var(--bg3); border:1px solid var(--line);
+    color:var(--text); font-size:18px; display:grid; place-items:center;
+  }
   #homeBrand .logo {
     width:30px; height:30px; border-radius:9px; display:grid; place-items:center;
     background:linear-gradient(135deg, var(--accent), #818cf8); color:#06060a; font-size:15px; font-weight:900;
@@ -528,6 +532,7 @@
   <button class="tool" data-tool="text"><span class="ic">🅣</span><span class="lb">Metin</span></button>
   <button class="tool" data-tool="sticker"><span class="ic">😀</span><span class="lb">Obje</span></button>
   <button class="tool" data-tool="bg"><span class="ic">🌈</span><span class="lb">Arka Plan</span></button>
+  <button class="tool" data-tool="stock"><span class="ic">🎞️</span><span class="lb">Stok Video</span></button>
   <button class="tool needsel" data-tool="pip"><span class="ic">🖼️</span><span class="lb">Bindirme</span></button>
   <button class="tool" data-tool="music"><span class="ic">🎵</span><span class="lb">Müzik</span></button>
   <button class="tool needsel" data-tool="duplicate"><span class="ic">⧉</span><span class="lb">Kopyala</span></button>
@@ -556,7 +561,7 @@
 
 <div id="home">
   <div id="homeScroll">
-    <div id="homeBrand"><span class="logo">P</span> Pisan Cut</div>
+    <div id="homeBrand"><span class="logo">P</span> Pisan Cut<span style="flex:1"></span><button id="btnFullscreen" title="Tam ekran">⛶</button></div>
     <div id="proToggleRow">
       <div>
         <div class="ptitle">🖥️ Profesyonel Mod</div>
@@ -1742,7 +1747,7 @@ function drawOverlayItem(o) {
   if (st.alpha <= 0.01) return;
   const px = o.size * H;
   ctx.save();
-  ctx.globalAlpha = st.alpha;
+  ctx.globalAlpha = st.alpha * (o.opacity ?? 1);
   ctx.translate(o.x * W + st.dx * W, o.y * H + st.dy * H);
   ctx.rotate(st.rot);
   ctx.scale(st.sc, st.sc);
@@ -2481,6 +2486,7 @@ function handleTool(tool) {
     case "text": openTextSheet(state.selOv && state.selOv.kind === "text" ? state.selOv : null); break;
     case "sticker": openStickerSheet(); break;
     case "bg": openBgSheet(); break;
+    case "stock": openStockSheet(); break;
     case "pip":
       if (!state.clips.length) { toast("Önce ana video/fotoğraf ekle"); break; }
       $("#filePip").click();
@@ -2974,7 +2980,7 @@ $("#filePip").onchange = async e => {
     mediaId, name: f.name, content: (isImg ? "🖼 " : "🎬 ") + f.name,
     url, el, natDur, in: 0,
     start: state.t, dur: isImg ? 3 : Math.min(natDur, Math.max(totalDur() - state.t, 1)),
-    x: .5, y: .35, scale: .45, volume: 1,
+    x: .5, y: .35, scale: .45, volume: 1, opacity: 1,
     size: .1, color: "#fff", bg: false,
     animIn: "none", loop: "none",
   };
@@ -2989,6 +2995,7 @@ $("#filePip").onchange = async e => {
 function openPipSheet(o) {
   openSheet("Bindirme " + (o.type === "video" ? "🎬" : "🖼"), body => {
     sliderRow(body, "Boyut", .08, 1.5, .01, o.scale, v => Math.round(v * 100) + "%", v => { o.scale = v; invalidate(); });
+    sliderRow(body, "Opaklık", .1, 1, .05, o.opacity ?? 1, v => Math.round(v * 100) + "%", v => { o.opacity = v; invalidate(); });
     sliderRow(body, "Süre",
       .5, o.type === "video" ? Math.max((o.natDur || 120) - o.in, 1) : 60, .1,
       o.dur, v => v.toFixed(1) + "s", v => { o.dur = v; scheduleTimeline(); });
@@ -3304,6 +3311,132 @@ function stopLibPreview() {
   if (libPreview) { libPreview.pause(); libPreview = null; }
 }
 
+/* ---------- Stok video kütüphanesi (açık kaynak, filigransız) ---------- */
+const VIDEO_LIBS = {
+  wikimedia: {
+    name: "📖 Wikimedia",
+    async search(q) {
+      const u = "https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=" +
+        encodeURIComponent("filetype:video " + q) +
+        "&gsrnamespace=6&gsrlimit=16&prop=imageinfo&iiprop=url|mime|size&format=json&origin=*";
+      const j = await (await fetch(u)).json();
+      const pages = Object.values((j.query || {}).pages || {});
+      return pages.filter(p => p.imageinfo && p.imageinfo[0] && /video\//.test(p.imageinfo[0].mime || "")).map(p => ({
+        title: p.title.replace(/^File:/, "").replace(/\.(webm|ogv|mp4|mov)$/i, ""),
+        by: "Wikimedia Commons",
+        resolve: async () => p.imageinfo[0].url,
+      }));
+    },
+  },
+  archive: {
+    name: "🏛 İnternet Arşivi",
+    async search(q) {
+      const u = "https://archive.org/advancedsearch.php?q=" + encodeURIComponent(q + " AND mediatype:movies") +
+        "&fl[]=identifier&fl[]=title&rows=16&output=json";
+      const j = await (await fetch(u)).json();
+      return (j.response?.docs || []).map(d => ({
+        title: d.title || d.identifier,
+        by: "archive.org",
+        resolve: async () => {
+          const m = await (await fetch("https://archive.org/metadata/" + d.identifier)).json();
+          const f = (m.files || []).find(f => /\.(mp4|webm|ogv)$/i.test(f.name) && (!f.source || f.source !== "original" || true));
+          return f ? "https://archive.org/download/" + d.identifier + "/" + encodeURIComponent(f.name) : null;
+        },
+      }));
+    },
+  },
+};
+
+async function addVideoFromUrl(url, name) {
+  toast("Video indiriliyor… (biraz sürebilir)");
+  const r = await fetch(url);
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  const blob = await r.blob();
+  pushHistory();
+  const mediaId = uid();
+  idbPut("media", { id: mediaId, blob, name, type: blob.type || "video/mp4" }).catch(() => {});
+  const objUrl = URL.createObjectURL(blob);
+  const v = document.createElement("video");
+  v.preload = "auto"; v.playsInline = true; v.setAttribute("playsinline", "");
+  v.addEventListener("seeked", invalidate);
+  v.src = objUrl;
+  const ok = await new Promise(res => { v.onloadedmetadata = () => res(true); v.onerror = () => res(false); });
+  if (!ok) throw new Error("çözülemedi");
+  const dur = await resolveDuration(v);
+  const c = mkClip("video", objUrl, name, v, dur);
+  c.mediaId = mediaId;
+  state.clips.push(c);
+  grabThumb(c);
+  $("#emptyState").style.display = "none";
+  $("#btnExport").disabled = false;
+  renderAll();
+  seekTo(state.t, true);
+  toast("Video eklendi 🎬");
+}
+
+function openStockSheet() {
+  let lib = "wikimedia";
+  openSheet("Stok Video (filigransız)", body => {
+    const tabs = document.createElement("div");
+    tabs.className = "fxTabs";
+    body.appendChild(tabs);
+    const note = document.createElement("p");
+    note.style.cssText = "font-size:10px;color:var(--dim);margin:0 0 8px";
+    note.textContent = "Açık kaynak / kamu malı videolar — filigransız. Dokun, indir ve klip olarak ekle.";
+    body.appendChild(note);
+    const search = document.createElement("input");
+    search.className = "fxSearch";
+    search.placeholder = "🔍 Video ara… (Enter)";
+    body.appendChild(search);
+    const go = document.createElement("button");
+    go.className = "sheetBtn"; go.textContent = "Ara";
+    body.appendChild(go);
+    const list = document.createElement("div");
+    body.appendChild(list);
+
+    const rTabs = () => {
+      tabs.innerHTML = "";
+      for (const [k, l] of Object.entries(VIDEO_LIBS)) {
+        const b = document.createElement("button");
+        b.className = "fxTab" + (lib === k ? " sel" : "");
+        b.textContent = l.name;
+        b.onclick = () => { lib = k; rTabs(); };
+        tabs.appendChild(b);
+      }
+    };
+    const doSearch = async () => {
+      const q = search.value.trim();
+      if (!q) return;
+      list.innerHTML = `<p style="font-size:12px;color:var(--dim);text-align:center;padding:12px">Aranıyor…</p>`;
+      try {
+        const res = await VIDEO_LIBS[lib].search(q);
+        list.innerHTML = "";
+        if (!res.length) { list.innerHTML = `<p style="font-size:12px;color:var(--dim);text-align:center;padding:12px">Sonuç yok.</p>`; return; }
+        for (const it of res) {
+          const row = document.createElement("div");
+          row.className = "libRow";
+          row.innerHTML = `<span class="pbtn">🎬</span><span class="linfo"><span class="ltitle"></span><span class="lartist"></span></span><button class="pbtn addb">＋</button>`;
+          row.querySelector(".ltitle").textContent = it.title;
+          row.querySelector(".lartist").textContent = it.by;
+          row.querySelector(".addb").onclick = async ev => {
+            ev.target.textContent = "…";
+            try {
+              const u = await it.resolve();
+              if (!u) throw new Error("url yok");
+              await addVideoFromUrl(u, it.title);
+              ev.target.textContent = "✓";
+            } catch (_) { ev.target.textContent = "＋"; toast("İndirilemedi — başka video dene"); }
+          };
+          list.appendChild(row);
+        }
+      } catch (_) { list.innerHTML = `<p style="font-size:12px;color:var(--dim);text-align:center;padding:12px">Kütüphaneye ulaşılamadı.</p>`; }
+    };
+    search.addEventListener("keydown", ev => { if (ev.key === "Enter") { ev.preventDefault(); doSearch(); } });
+    go.onclick = doSearch;
+    rTabs();
+  });
+}
+
 async function addMusicFromUrl(url, name) {
   toast("İndiriliyor…");
   const r = await fetch(url);
@@ -3319,7 +3452,7 @@ async function addMusicFromUrl(url, name) {
   const natDur = await resolveDuration(a);
   state.musics.push({
     id: idSeq++, mediaId, name, url: objUrl, el: a,
-    natDur, start: state.t, in: 0, out: natDur, speed: 1, volume: .8,
+    natDur, start: state.t, in: 0, out: natDur, speed: 1, volume: .8, bass: 0,
   });
   renderTimeline();
   toast("Müzik eklendi 🎵");
@@ -3465,6 +3598,7 @@ function openMusicSheet() {
 function openMusicSegSheet(m) {
   openSheet("Müzik 🎵 " + m.name, body => {
     sliderRow(body, "Ses", 0, 1, .05, m.volume, v => Math.round(v * 100) + "%", v => m.volume = v);
+    sliderRow(body, "🔊 Bas Güçlendir", 0, 15, 1, m.bass || 0, v => v > 0 ? "+" + v + " dB" : "Kapalı", v => m.bass = v);
     sliderRow(body, "Hız", -1, 1, .01, Math.log10(clamp(m.speed, .1, 10)),
       v => Math.pow(10, v).toFixed(2) + "x",
       v => {
@@ -3570,7 +3704,7 @@ $("#fileMusic").onchange = async e => {
   const natDur = await resolveDuration(a);   // kayıt cihazı ses dosyalarında duration=Infinity olabilir
   state.musics.push({
     id: idSeq++, mediaId, name: f.name, url, el: a,
-    natDur, start: state.t, in: 0, out: natDur, speed: 1, volume: .8,
+    natDur, start: state.t, in: 0, out: natDur, speed: 1, volume: .8, bass: 0,
   });
   sheet.classList.remove("open");
   renderTimeline();
@@ -3924,7 +4058,12 @@ async function mixAudioOffline(totalSec) {
     src.playbackRate.value = m.speed;
     const g = oac.createGain();
     g.gain.value = m.volume;
-    src.connect(g).connect(oac.destination);
+    src.connect(g);
+    if (m.bass > 0) {   // bas güçlendirme: low-shelf filtre
+      const f = oac.createBiquadFilter();
+      f.type = "lowshelf"; f.frequency.value = 150; f.gain.value = m.bass;
+      g.connect(f); f.connect(oac.destination);
+    } else g.connect(oac.destination);
     const playSrc = Math.min(m.out, buf.duration) - m.in;
     if (playSrc > .01) {
       try { src.start(m.start, Math.min(m.in, buf.duration), playSrc); any = true; } catch (_) {}
@@ -4442,10 +4581,17 @@ async function realtimeExport() {
     master.connect(dest);
     const els = state.clips.filter(c => c.type === "video").map(c => c.el);
     for (const o of state.overlays) if (o.kind === "pip" && o.type === "video") els.push(o.el);
-    for (const m of state.musics) els.push(m.el);
+    const bassByEl = new Map();
+    for (const m of state.musics) { els.push(m.el); if (m.bass > 0) bassByEl.set(m.el, m.bass); }
     for (const el of new Set(els)) {
       try { getSource(el).disconnect(); } catch (_) {}
-      try { getSource(el).connect(master); } catch (_) {}
+      try {
+        if (bassByEl.has(el)) {   // bas güçlendirme filtresi
+          const f = audioCtx.createBiquadFilter();
+          f.type = "lowshelf"; f.frequency.value = 150; f.gain.value = bassByEl.get(el);
+          getSource(el).connect(f); f.connect(master);
+        } else getSource(el).connect(master);
+      } catch (_) {}
     }
     stream = new MediaStream([...canvasStream.getVideoTracks(), ...dest.stream.getAudioTracks()]);
   }
@@ -4504,7 +4650,7 @@ function projectData() {
     overlays: state.overlays.map(o => { const { el, url, ...rest } = o; return { ...rest }; }),
     musics: state.musics.map(m => ({
       mediaId: m.mediaId, name: m.name, natDur: m.natDur,
-      start: m.start, in: m.in, out: m.out, speed: m.speed, volume: m.volume,
+      start: m.start, in: m.in, out: m.out, speed: m.speed, volume: m.volume, bass: m.bass || 0,
     })),
   };
 }
@@ -4647,7 +4793,7 @@ async function openProject(rec) {
     const natDur = md.natDur || (isFinite(a.duration) ? a.duration : 60);
     state.musics.push({
       id: idSeq++, mediaId: md.mediaId, name: md.name, url, el: a,
-      natDur, start: md.start || 0, in: md.in || 0,
+      natDur, start: md.start || 0, in: md.in || 0, bass: md.bass || 0,
       out: md.out == null ? natDur : md.out,
       speed: md.speed || 1, volume: md.volume ?? .8,
     });
@@ -4748,6 +4894,15 @@ function applyPro(on) {
   }
 }
 $("#proToggle").onclick = () => applyPro(!document.body.classList.contains("pro"));
+$("#btnFullscreen").onclick = () => {
+  const d = document;
+  if (d.fullscreenElement || d.webkitFullscreenElement) {
+    (d.exitFullscreen || d.webkitExitFullscreen || (() => {})).call(d);
+  } else {
+    const el = d.documentElement;
+    (el.requestFullscreen || el.webkitRequestFullscreen || (() => toast("Tam ekran desteklenmiyor"))).call(el);
+  }
+};
 try { if (localStorage.getItem("pc_pro") === "1") applyPro(true); } catch (_) {}
 addEventListener("resize", () => { if (document.body.classList.contains("pro") && $("#home").style.display === "none") { fitPreview(); setCanvasResolution(false); } });
 

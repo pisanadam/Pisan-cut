@@ -24,7 +24,7 @@ Ayarlar → Pages → dalı seç → yayınla.
 - 🎨 **100+ Filtre**: 10 aile × 9 yoğunluk + 12 ton kaydırma; arama ve kategorilerle
 - ▦ **108 Şablon**: Popüler edit müziği türleriyle (Phonk, Sigma, Drill, Lofi, Slowed, Synthwave…) hazır kurgu şablonları — seç, videolarını ekle; tempo kesimi, her kesimde dönüşümlü farklı geçişler (geçiş havuzu), filtre, efekt, başlık ve müzik otomatik uygulanır; birden fazla video/fotoğraf seçilebilir. "🎲 Otomatik Şablon Oluştur" ile rastgele yeni kombinasyonlar
 - 🧪 **YZ Lab**: Upscale, Kare Üretici ve tek dokunuşla Otomatik Edit
-- 🖼 **Bindirme (PiP)**: Video/fotoğrafı katman olarak üstüne ekle — sesi mikslenir, süresi ve konumu ayarlanır
+- 🖼 **Bindirme (PiP)**: Video/fotoğrafı katman olarak üstüne ekle — sesi mikslenir, süresi, konumu ve **opaklığı** ayarlanır
 - 🤏 **Dokunmatik dönüşüm**: Önce dokunup seç, sonra tek parmakla taşı, iki parmakla yakınlaştır/boyutlandır (yanlışlıkla kaydırmayı önler; ana klip zaman çizelgesinden seçilir); sürüklerken merkez mıknatısı (kılavuz çizgisiyle ortaya yapışma) ve panellerde "Tam Ortala / Yatay / Dikey" düğmeleri
 - 🗂 **Katmanlar**: Üst üste binen öğelerde "öne getir / arkaya gönder" ile sıralama; birden çok bindirme ve müzik eklenebilir — zamanda çakışan çubuklar zaman çizelgesinde otomatik olarak ayrı katman satırlarına dizilir
 - ↔️ **Çubuk sürükleme**: Zaman çizelgesinde metin/obje/bindirme çubuklarını ortadan taşı, uçlarından uzat/kısalt
@@ -35,7 +35,9 @@ Ayarlar → Pages → dalı seç → yayınla.
 - 🅣 **Animasyonlu metin**: Giriş animasyonları (Pop, Solma, Kayma, Zıplama, Dönme, Daktilo) + döngü hareketleri (Dalga, Gökkuşağı, Nabız, Süzülme, Titreme); sürükleyerek konumlandır
 - 😀 **Bindirme objeler**: Emoji çıkartmaları, giriş animasyonu + sürekli hareket (süzülme, dönme, nabız…), boyut/süre ayarı, sürükleyerek taşıma
 - 🌈 **Arka Plan kütüphanesi**: 32 düz renk arka plan — dokun, tüm kareyi kaplayan renk klibi eklenir (her orana uyar, süresi kenardan uzatılır); yazı/obje altına zemin ya da geçiş dolgusu için ideal
-- 🎵 **Müzik**: Birden çok parça ekle (oynatma çubuğundan başlar); çubuğunu sürükleyerek taşı/kırp, böl, sil, hızlandır (0.1x–10x), ses seviyesi; proje süresi videonun bittiği andır: müzik daha uzunsa video sonunda otomatik kesilir (zaman göstergesi videonun süresini yazar). Kısa müziği video boyunca uzatmak için müzik panelindeki "🔁 Video sonuna kadar döngüle" düğmesini kullan
+- 🎞️ **Stok Video kütüphanesi**: Açık kaynak / kamu malı videoları (Wikimedia Commons, İnternet Arşivi) ara, indir ve **filigransız** klip olarak ekle — indirilen video projeyle birlikte cihazına kaydedilir
+- ⛶ **Tam ekran**: Ana menüdeki butonla uygulamayı tam ekrana al
+- 🎵 **Müzik**: Birden çok parça ekle (oynatma çubuğundan başlar); çubuğunu sürükleyerek taşı/kırp, böl, sil, hızlandır (0.1x–10x), ses seviyesi, **bas güçlendirme** (low-shelf, 0–15 dB); proje süresi videonun bittiği andır: müzik daha uzunsa video sonunda otomatik kesilir (zaman göstergesi videonun süresini yazar). Kısa müziği video boyunca uzatmak için müzik panelindeki "🔁 Video sonuna kadar döngüle" düğmesini kullan
 - 📚 **Müzik kütüphaneleri**: Cihazından eklemenin yanında 5 çevrimiçi kaynakta ara, dinle ve tek dokunuşla projeye ekle — 🎧 Phonk sekmesi hazır kategorilerle (Popüler, Drift, Brazilian, Agresif, Chill, Sigma) sekme açılır açılmaz popüler phonk parçalarını listeler; — İnternet Arşivi (archive.org), Openverse ve Wikimedia Commons tam şarkı verir; iTunes 30 sn önizleme verir (döngüleme ile uzatılabilir); eklenen parçalar projeyle birlikte cihazına kaydedilir
 - ↩️ **Geri al / Yinele**: PC'de Ctrl+Z geri alır, Ctrl+X (veya Ctrl+Y / Ctrl+Shift+Z) yineler; mobilde üst çubuktaki ↩ ↪ düğmeleri — 50 adıma kadar
 - ⬛ **En-boy oranı**: 9:16, 16:9, 1:1, 4:5
