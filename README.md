@@ -12,6 +12,7 @@ Ayarlar → Pages → dalı seç → yayınla.
 ## Özellikler
 
 - 🏠 **Ana ekran**: CapCut benzeri açılış menüsü, araç kısayolları ve proje listesi
+- 🖥️ **Profesyonel Mod (aç/kapa)**: Ana menünün üstündeki anahtarla açılan masaüstü düzeni (DaVinci Resolve / Windows CapCut tarzı) — üstte menü çubuğu, solda dikey araç rayı, ortada büyük önizleme, sağda sabit "Özellikler" (inspector) paneli, altta tam genişlik zaman çizelgesi. Geniş ekran / yatay modda devreye girer, tercih kaydedilir
 - 💾 **Otomatik kayıt**: Projeler medya dosyalarıyla birlikte IndexedDB'ye kaydedilir; sekmeyi kapatsan bile ana ekrandan geri açabilirsin (yeniden adlandır / sil dahil)
 - 📹 **Çoklu klip**: Video ve fotoğraf ekle, sırala
 - ✂️ **Kırp & Böl**: Klibi seçince çıkan kenar tutamaçlarını sürükleyerek videoyu kes, fotoğrafın süresini uzat (kesilen uçtaki kare canlı önizlenir); oynatma çubuğundan ikiye böl; ilk klip soldan kırpılınca zaman kaymaz — kesilen süre kadar başta siyah boşluk kalır (müzik/yazı senkronu korunur)
