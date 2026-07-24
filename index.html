@@ -527,6 +527,7 @@
   <button class="tool needsel" data-tool="adjust"><span class="ic">🎛️</span><span class="lb">Ayarla</span></button>
   <button class="tool" data-tool="text"><span class="ic">🅣</span><span class="lb">Metin</span></button>
   <button class="tool" data-tool="sticker"><span class="ic">😀</span><span class="lb">Obje</span></button>
+  <button class="tool" data-tool="bg"><span class="ic">🌈</span><span class="lb">Arka Plan</span></button>
   <button class="tool needsel" data-tool="pip"><span class="ic">🖼️</span><span class="lb">Bindirme</span></button>
   <button class="tool" data-tool="music"><span class="ic">🎵</span><span class="lb">Müzik</span></button>
   <button class="tool needsel" data-tool="duplicate"><span class="ic">⧉</span><span class="lb">Kopyala</span></button>
@@ -1143,6 +1144,18 @@ function buildFilter(c) {
 /* klibin karesini kapla-sığdır + dönüşüm/saydamlık/kırpma ile çiz */
 function drawClipImage(c, o = {}) {
   const W = canvas.width, H = canvas.height;
+  /* düz renk arka plan: tüm kareyi kaplar (medya elemanı yok) */
+  if (c.type === "color") {
+    ctx.save();
+    if (o.clipPath) { ctx.beginPath(); o.clipPath(ctx); ctx.clip(o.evenodd ? "evenodd" : "nonzero"); }
+    else if (o.clipRect) { ctx.beginPath(); ctx.rect(...o.clipRect); ctx.clip(); }
+    ctx.globalAlpha = o.alpha ?? 1;
+    ctx.translate(o.tx || 0, o.ty || 0);
+    ctx.fillStyle = c.color || "#000";
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+    return;
+  }
   const src = c.el;
   const sw = c.type === "image" ? src.naturalWidth : src.videoWidth;
   const sh = c.type === "image" ? src.naturalHeight : src.videoHeight;
@@ -2399,7 +2412,7 @@ function bindTrim(handle, clip, side) {
           clipEl.style.marginLeft = state.leadGap * state.pps + "px";
         }
       } else {
-        const maxOut = clip.type === "image" ? 600 : clip.natDur;
+        const maxOut = clip.type === "video" ? clip.natDur : 600;   // görsel/renk uzatılabilir
         clip.out = clamp(orig.out + dxSec, clip.in + .15, maxOut);
       }
       clipEl.style.width = Math.max(clipDur(clip) * state.pps, 24) + "px";
@@ -2467,6 +2480,7 @@ function handleTool(tool) {
     case "adjust": openAdjustSheet(); break;
     case "text": openTextSheet(state.selOv && state.selOv.kind === "text" ? state.selOv : null); break;
     case "sticker": openStickerSheet(); break;
+    case "bg": openBgSheet(); break;
     case "pip":
       if (!state.clips.length) { toast("Önce ana video/fotoğraf ekle"); break; }
       $("#filePip").click();
@@ -2861,6 +2875,52 @@ function openStickerSheet() {
         openStickerEditSheet(st);
         toast("Obje eklendi — sürükleyerek taşıyabilirsin");
       };
+      grid.appendChild(b);
+    });
+    body.appendChild(grid);
+  });
+}
+
+/* ---------- Arka Plan kütüphanesi (32 düz renk) ---------- */
+const BG_COLORS = [
+  "#000000", "#1f2937", "#374151", "#6b7280", "#9ca3af", "#e5e7eb", "#ffffff", "#f8fafc",
+  "#ef4444", "#f97316", "#f59e0b", "#eab308", "#facc15", "#84cc16", "#22c55e", "#10b981",
+  "#14b8a6", "#06b6d4", "#0ea5e9", "#3b82f6", "#6366f1", "#8b5cf6", "#a855f7", "#d946ef",
+  "#ec4899", "#f43f5e", "#7f1d1d", "#78350f", "#064e3b", "#134e4a", "#1e3a8a", "#4a044e",
+];
+function colorThumb(color) {
+  const tc = document.createElement("canvas");
+  tc.width = 72; tc.height = 52;
+  const x = tc.getContext("2d");
+  x.fillStyle = color; x.fillRect(0, 0, 72, 52);
+  return tc.toDataURL("image/png");
+}
+function addColorBackground(color) {
+  pushHistory();
+  const c = mkClip("color", "", "Arka Plan", null, 3);
+  c.color = color;
+  c.thumb = colorThumb(color);
+  state.clips.push(c);
+  $("#emptyState").style.display = "none";
+  $("#btnExport").disabled = false;
+  state.selClip = c;
+  renderAll();
+  seekTo(Math.min(state.t, totalDur()), true);
+  toast("Arka plan eklendi");
+}
+function openBgSheet() {
+  openSheet("Arka Plan (32 renk)", body => {
+    const hint = document.createElement("p");
+    hint.style.cssText = "font-size:11px;color:var(--dim);margin:0 0 10px";
+    hint.textContent = "Renge dokun → tüm kareyi kaplayan düz arka plan klibi eklenir (süresi kenardan uzatılır).";
+    body.appendChild(hint);
+    const grid = document.createElement("div");
+    grid.className = "emojiGrid";
+    BG_COLORS.forEach(col => {
+      const b = document.createElement("button");
+      b.style.background = col;
+      b.style.border = col === "#000000" ? "1px solid var(--line)" : "none";
+      b.onclick = () => addColorBackground(col);
       grid.appendChild(b);
     });
     body.appendChild(grid);
@@ -4435,7 +4495,7 @@ function projectData() {
     format: state.format,
     leadGap: state.leadGap,
     clips: state.clips.map(c => ({
-      mediaId: c.mediaId, type: c.type, name: c.name, natDur: c.natDur,
+      mediaId: c.mediaId, type: c.type, name: c.name, natDur: c.natDur, color: c.color,
       in: c.in, out: c.out, speed: c.speed, volume: c.volume,
       pitchShift: c.pitchShift, tx: c.tx, ty: c.ty, scale: c.scale,
       filter: c.filter, adjust: { ...c.adjust }, effects: [...(c.effects || [])], trans: { ...c.trans },
@@ -4517,6 +4577,16 @@ async function openProject(rec) {
   applyAspect();
   toast("Proje açılıyor…");
   for (const cd of rec.data.clips) {
+    if (cd.type === "color") {   // düz renk arka plan: medya yok
+      const c = { ...mkClip("color", "", cd.name || "Arka Plan", null, cd.natDur || 3), ...cd, el: null, url: "" };
+      c.id = idSeq++;
+      c.adjust = { ...cd.adjust };
+      c.trans = { ...cd.trans };
+      c.effects = cd.effects ? [...cd.effects] : (cd.effect && cd.effect !== "none" ? [cd.effect] : []);
+      c.thumb = colorThumb(cd.color || "#000");
+      state.clips.push(c);
+      continue;
+    }
     const m = await idbGet("media", cd.mediaId).catch(() => null);
     if (!m) continue;
     const url = URL.createObjectURL(m.blob);
