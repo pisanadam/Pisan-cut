@@ -630,7 +630,7 @@
 const $ = s => document.querySelector(s);
 /* Sürüm — her güncellemede artar; Pages'in yeni sürümü yayınlayıp
    yayınlamadığını buradan (Pisan Cut yanındaki rozetten) anlayabilirsin. */
-const APP_VERSION = "v1.6";
+const APP_VERSION = "v1.7";
 document.querySelectorAll(".ver").forEach(e => e.textContent = APP_VERSION);
 const canvas = $("#canvas"), ctx = canvas.getContext("2d", { alpha: false, desynchronized: true });
 
@@ -4236,7 +4236,7 @@ const OPUS_HEAD_DEFAULT = (() => {
    Kutu yapısı ve stco ofsetleri VP9+Opus ile uçtan uca doğrulanır;
    gerçek cihazlarda aynı yapı H.264+AAC ile kullanılır. */
 function mkMp4(opts) {
-  const { width, height, vcodec, vdesc, acodec, adesc, sampleRate = 48000, channels = 2 } = opts;
+  const { width, height } = opts;   // codec açıklamaları finish()'te verilir
   const VTS = 90000;
   const vSamples = [], aSamples = [];
   const enc = new TextEncoder();
@@ -4264,10 +4264,11 @@ function mkMp4(opts) {
     },
     addAudio(chunk) {
       const d = new Uint8Array(chunk.byteLength); chunk.copyTo(d);
-      const dur = chunk.duration ? Math.round(chunk.duration / 1e6 * sampleRate) : 1024;
+      const dur = chunk.duration ? Math.round(chunk.duration / 1e6 * 48000) : 1024;
       aSamples.push({ data: d, dur });
     },
-    finish() {
+    finish(fin) {
+      const { vcodec, vdesc, acodec, adesc, sampleRate = 48000, channels = 2 } = fin;
       const hasAudio = aSamples.length > 0;
       const vBytes = cat(vSamples.map(s => s.data));
       const aBytes = hasAudio ? cat(aSamples.map(s => s.data)) : new Uint8Array(0);
@@ -4424,21 +4425,24 @@ async function fastRender(plan) {
     codecId: plan.vKind === "vp8" ? "V_VP8" : "V_VP9",
     durationMs: total * 1000,
   });
-  /* MP4 muxer video açıklamasını (avcC) ilk karede alır; bu yüzden
-     muxer finish sırasında değil, kodlama sonunda kurulur */
-  const mp4Chunks = { v: [], a: [] };
+  /* MP4 muxer'ı önceden kur: kodlanan kareler ANINDA kopyalanıp eklenir
+     (native chunk nesneleri bekletilmez) — uzun videolarda bellek dolup
+     render'ın yavaşlaması bu şekilde önlenir. Codec açıklamaları finish'te. */
+  const mp4Muxer = isMp4 ? mkMp4({ width: state.exportW, height: state.exportH }) : null;
 
   /* 1) ses: video kodlamasıyla PARALEL mikslenir ve kodlanır */
   const audioJob = !withAudio ? Promise.resolve(null) : (async () => {
     const audioBuffer = await mixAudioOffline(total).catch(() => null);
     if (!audioBuffer || exportAbort) return null;
     const chunks = [];
-    let desc = null;
+    let desc = null, count = 0;
     const aenc = new AudioEncoder({
       output: (chunk, meta) => {
         const d = meta && meta.decoderConfig && meta.decoderConfig.description;
         if (d && !desc) desc = d instanceof ArrayBuffer ? new Uint8Array(d) : new Uint8Array(d.buffer, d.byteOffset, d.byteLength);
-        chunks.push(chunk);
+        count++;
+        if (isMp4) mp4Muxer.addAudio(chunk);   // anında kopyala
+        else chunks.push(chunk);
       },
       error: e => console.error("AudioEncoder:", e),
     });
@@ -4462,7 +4466,7 @@ async function fastRender(plan) {
     }
     await aenc.flush();
     aenc.close();
-    return { chunks, desc };
+    return { chunks, desc, count };
   })();
 
   /* 2) video: her kare kesin zamana sarılıp kodlanır. */
@@ -4471,7 +4475,7 @@ async function fastRender(plan) {
     output: (chunk, meta) => {
       const d = meta && meta.decoderConfig && meta.decoderConfig.description;
       if (d && !videoDesc) videoDesc = d instanceof ArrayBuffer ? new Uint8Array(d) : new Uint8Array(d.buffer, d.byteOffset, d.byteLength);
-      if (isMp4) mp4Chunks.v.push(chunk);
+      if (isMp4) mp4Muxer.addVideo(chunk);   // anında kopyala, native nesneyi bırak
       else webmMuxer.addVideo(chunk);
     },
     error: e => { encError = e; },
@@ -4554,9 +4558,9 @@ async function fastRender(plan) {
   await venc.flush();
   venc.close();
 
-  /* paralel yürüyen ses işini topla */
+  /* paralel yürüyen ses işini topla (kareler zaten anında eklendi) */
   const audioRes = await audioJob;
-  if (audioRes && audioRes.chunks.length) {
+  if (audioRes && audioRes.count > 0) {
     audioIncluded = true;
     audioDesc = audioRes.desc;
     if (plan.aKind === "opus" && audioRes.desc) opusHead = audioRes.desc;
@@ -4565,17 +4569,13 @@ async function fastRender(plan) {
 
   let blob, ext;
   if (isMp4) {
-    const mux = mkMp4({
-      width: state.exportW, height: state.exportH,
+    blob = mp4Muxer.finish({
       vcodec: plan.vKind === "avc" ? "avc" : "vp9",
       vdesc: videoDesc || new Uint8Array(0),
       acodec: audioIncluded ? plan.aKind : null,
       adesc: audioIncluded ? audioDesc : null,
       sampleRate: 48000, channels: 2,
     });
-    for (const c of mp4Chunks.v) mux.addVideo(c);
-    if (audioIncluded) for (const c of audioRes.chunks) mux.addAudio(c);
-    blob = mux.finish();
     ext = "mp4";
   } else {
     if (audioIncluded) for (const c of audioRes.chunks) webmMuxer.addAudio(c);
