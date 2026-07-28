@@ -630,7 +630,7 @@
 const $ = s => document.querySelector(s);
 /* Sürüm — her güncellemede artar; Pages'in yeni sürümü yayınlayıp
    yayınlamadığını buradan (Pisan Cut yanındaki rozetten) anlayabilirsin. */
-const APP_VERSION = "v2.1";
+const APP_VERSION = "v2.2";
 document.querySelectorAll(".ver").forEach(e => e.textContent = APP_VERSION);
 
 /* iOS/iPadOS (Apple WebKit) tespiti — iPad'ler kendini "Macintosh" gösterir,
@@ -4551,27 +4551,93 @@ async function fastRender(plan) {
     prevOutCv.height = state.exportH;
   }
 
+  /* ---- PARALEL SEEK HATTI ----
+     Tek tek sarıp beklemek CPU çözücü çekirdeklerini boş bırakır (utilization
+     düşük kalır). Bunun yerine her klip için bir havuz gölge <video> elemanı
+     tutulur ve gelecek kareler AYNI ANDA sarılır; kodlayıcı bunları tüketirken
+     yeni seek'ler arka planda sürer → donanım darboğaza kadar dolu kullanılır. */
+  let LANES = Math.min(Math.max(navigator.hardwareConcurrency || 4, 3), 8);
+  if (state.exportW * state.exportH > 1920 * 1080) LANES = Math.min(LANES, 4);   // 4K: bellek
+  if (LANES > frames) LANES = Math.max(frames, 1);
+  const shadowCache = new Map();   // clip -> { pool:[el...], rr:0 }
+  const makeShadow = (clip) => new Promise(res => {
+    const e = document.createElement("video");
+    e.muted = true; e.playsInline = true; e.preload = "auto";
+    e.src = clip.el.currentSrc || clip.el.src;
+    const done = () => { e.removeEventListener("loadeddata", done); res(e); };
+    if (e.readyState >= 2) return done();
+    e.addEventListener("loadeddata", done, { once: true });
+    try { e.load(); } catch (_) {}
+    setTimeout(done, 4000);
+  });
+  const poolFor = async (clip) => {
+    let s = shadowCache.get(clip);
+    if (!s) {
+      s = { pool: [], rr: 0 };
+      shadowCache.set(clip, s);
+      s.pool = await Promise.all(Array.from({ length: LANES }, () => makeShadow(clip)));
+    }
+    return s;
+  };
+  const hasExtras = (loc, t) => {
+    const idx = state.clips.indexOf(loc.clip);
+    const prev = idx > 0 ? state.clips[idx - 1] : null;
+    if (prev && prev.trans && prev.trans.type !== "none" &&
+        (t - clipStart(loc.clip)) < prev.trans.dur && prev.type === "video") return true;
+    for (const o of state.overlays)
+      if (o.kind === "pip" && o.type === "video" && t >= o.start && t <= o.start + o.dur) return true;
+    return false;
+  };
+  const frameT = i => Math.min(i / fps, Math.max(total - .001, 0));
+  const schedule = async (i) => {
+    const t = frameT(i);
+    const loc = locate(t);
+    const simple = !!(loc && loc.clip.type === "video" && !hasExtras(loc, t));
+    if (simple) {
+      const s = await poolFor(loc.clip);
+      const el = s.pool[s.rr]; s.rr = (s.rr + 1) % s.pool.length;
+      const p = seekVideoExact(el, loc.clip.in + loc.offset * loc.clip.speed);
+      return { i, t, loc, el, p, simple: true };
+    }
+    return { i, t, loc, simple: false };
+  };
+
   /* zamanlama tanısı: darboğaz seek mi kodlama mı, ve yavaşlama nerede
      başlıyor? (iPad'de kesin veri için — kullanıcı bu satırı bize iletir) */
   const t0render = performance.now();
   let tSeekMs = 0, tDrawMs = 0, tWaitMs = 0;
-  let slowFrom = -1;   // ms/kare ilk kez 10x ortalamayı aştığı kare
+  let slowFrom = -1;
+
+  const win = [];   // sırayla bekleyen kareler (en fazla LANES adet uçuşta)
+  let nextSched = 0;
+  const fill = async () => {
+    while (win.length < LANES && nextSched < frames) win.push(await schedule(nextSched++));
+  };
 
   for (let i = 0; i < frames; i++) {
     if (exportAbort) { venc.close(); throw new Error("abort"); }
     if (encError) { throw encError; }
     const tFrame0 = performance.now();
-    const t = Math.min(i / fps, Math.max(total - .001, 0));
-    const loc = locate(t);
-    if (loc && loc.clip.type === "video") {
-      const s0 = performance.now();
-      await seekVideoExact(loc.clip.el, loc.clip.in + loc.offset * loc.clip.speed);
-      tSeekMs += performance.now() - s0;
+    await fill();
+    const item = win.shift();
+    /* karenin kaynağını hazırla (basit kareler paralel sarıldı; diğerleri
+       — geçiş/PiP — kendi elemanlarında seri sarılır) */
+    const s0 = performance.now();
+    if (item.simple) {
+      await item.p;
+    } else {
+      if (item.loc && item.loc.clip.type === "video")
+        await seekVideoExact(item.loc.clip.el, item.loc.clip.in + item.loc.offset * item.loc.clip.speed);
+      await renderSeekExtras(item.t);
     }
-    await renderSeekExtras(t);
-    state.t = t;
+    tSeekMs += performance.now() - s0;
+    state.t = item.t;
+    /* basit karede çizim, önceden sarılmış gölge elemandan yapılır */
+    let restoreEl = null;
+    if (item.simple) { restoreEl = item.loc.clip.el; item.loc.clip.el = item.el; }
     const d0 = performance.now();
     drawFrame();
+    if (restoreEl) item.loc.clip.el = restoreEl;
     if (useFrameGen) {
       if (i > 0) {
         ctx.globalAlpha = .45;
@@ -4587,13 +4653,6 @@ async function fastRender(plan) {
     venc.encode(frame, { keyFrame: i % (fps * 5) === 0 });
     frame.close();
     tDrawMs += performance.now() - d0;
-    /* bir sonraki kare farklı klipteyse o klibi beklemeden ön-ısıt */
-    if (i + 1 < frames) {
-      const nl = locate(Math.min((i + 1) / fps, total - .001));
-      if (nl && nl.clip !== (loc && loc.clip) && nl.clip.type === "video") {
-        try { nl.clip.el.currentTime = nl.clip.in + nl.offset * nl.clip.speed; } catch (_) {}
-      }
-    }
     /* kodlayıcı kuyruğu şişmesin: uyku yerine dequeue olayını bekle
        (CPU boşta durmaz, kuyruk boşalır boşalmaz devam edilir) */
     const w0 = performance.now();
@@ -4610,11 +4669,17 @@ async function fastRender(plan) {
     const frameMs = performance.now() - tFrame0;
     if (slowFrom < 0 && i > 20) {
       const avgSoFar = (performance.now() - t0render) / (i + 1);
-      if (frameMs > avgSoFar * 6) slowFrom = i;
+      /* gerçek çöküş: hem ortalamanın 6 katı HEM de mutlak olarak yavaş
+         (>250ms) — geçiş sınırındaki kısa sıçramaları yanlış işaretlemesin */
+      if (frameMs > avgSoFar * 6 && frameMs > 250) slowFrom = i;
     }
     $("#progressInner").style.width = (i / frames * 100).toFixed(1) + "%";
-    $("#modalDesc").textContent = `Kare ${i + 1} / ${frames}`;
+    $("#modalDesc").textContent = `Kare ${i + 1} / ${frames} · ${LANES} hat`;
   }
+  /* gölge elemanları serbest bırak (çözücüler + bellek) */
+  for (const s of shadowCache.values())
+    for (const e of s.pool) { try { e.pause(); e.removeAttribute("src"); e.load(); } catch (_) {} }
+  shadowCache.clear();
   const renderSec = (performance.now() - t0render) / 1000;
   const perFrame = (ms) => (ms / frames).toFixed(1);
   await venc.flush();
@@ -4652,7 +4717,7 @@ async function fastRender(plan) {
     : !audioIncluded ? "YOK — ses kodlanamadı!"
     : opusInMp4 ? "Opus (⚠ iOS bunu MP4'te çalmaz!)"
     : plan.aKind === "aac" ? "AAC" : "Opus";
-  const timing = `${renderSec.toFixed(0)}sn · seek ${perFrame(tSeekMs)}ms/k · çiz ${perFrame(tDrawMs)}ms/k · bekle ${perFrame(tWaitMs)}ms/k`
+  const timing = `${renderSec.toFixed(0)}sn · ${LANES} hat · seek ${perFrame(tSeekMs)}ms/k · çiz ${perFrame(tDrawMs)}ms/k · bekle ${perFrame(tWaitMs)}ms/k`
     + (slowFrom >= 0 ? ` · yavaşlama ${slowFrom}. karede başladı` : "");
   lastExportInfo = `${ext.toUpperCase()} · Video: ${vName} · Ses: ${aName} · offline · ${timing}`;
   audioBufCache.clear();   // çözülmüş ses PCM'ini bellekten boşalt

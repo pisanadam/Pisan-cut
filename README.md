@@ -52,6 +52,7 @@ Ayarlar → Pages → dalı seç → yayınla.
 
 - Önizleme ve dışa aktarma tek bir `<canvas>` üzerinden çizilir; filtreler CSS filter, metinler canvas metni olarak işlenir.
 - **Hızlı render**: her kare için videolar tam zamana sarılır, kare `VideoEncoder` ile kodlanır; ses `OfflineAudioContext` ile mikslenip `AudioEncoder` (Opus) ile **videoyla paralel** kodlanır ve dosya içindeki minimal Matroska/WebM muxer ile birleştirilir. Kare düşmesi mümkün değildir. Kodlayıcı önce cihazın **donanım kodlayıcısını** dener (telefonlarda en hızlı ve en stabil yol), yoksa yazılım "quality" moduna düşer.
+- **Paralel seek hattı**: dışa aktarmada kareler tek tek sarılıp beklenmez; her klip için bir havuz gölge `<video>` elemanı tutulur ve gelecek kareler (çekirdek sayısına göre 3–8 hat) **aynı anda** sarılır. Böylece CPU çözücü çekirdekleri boş kalmaz, kodlayıcı bir kareyi işlerken sonraki kareler arka planda hazırlanır — donanım darboğaza kadar dolu kullanılır (seri sarmaya göre belirgin hızlanma). Geçiş ve PiP içeren kareler kendi elemanlarında seri işlenir (doğruluk için).
 - WebCodecs olmayan tarayıcılarda `canvas.captureStream()` + `MediaRecorder` ile gerçek zamanlı kayda düşülür.
 
 ## Sınırlamalar
