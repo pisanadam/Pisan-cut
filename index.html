@@ -4317,13 +4317,21 @@ function mkMp4(opts) {
       if (hasAudio) {
         let aEntry;
         if (acodec === "aac") {
-          /* esds: ES_Descriptor > DecoderConfig(0x40=AAC) > DecSpecificInfo(ASC) */
-          const asc = adesc;
-          const decSpec = cat([new Uint8Array([0x05, asc.length]), asc]);
-          const decCfg = cat([new Uint8Array([0x04, 13 + decSpec.length, 0x40, 0x15,
-            0, 0, 0, 0, 0, 0, 0, 0, 0]), decSpec]);
-          const esd = cat([new Uint8Array([0x03, 3 + decCfg.length + 3, 0, 0, 0]), decCfg,
-            new Uint8Array([0x06, 1, 2])]);
+          /* esds: ES_Descriptor > DecoderConfig(0x40=AAC) > DecSpecificInfo(ASC)
+             DecoderConfig içeriği: objType(1)+streamType(1)+bufferSizeDB(3)
+             +maxBitrate(4)+avgBitrate(4) = 13 bayt, sonra DecSpecificInfo */
+          const asc = [...adesc];
+          const decSpec = [0x05, asc.length, ...asc];              // 2 + asc
+          const dcContent = [
+            0x40, 0x15,                       // AAC, streamType(5)<<2|reserved
+            0x00, 0x00, 0x00,                 // bufferSizeDB (3)
+            0x00, 0x01, 0xF4, 0x00,           // maxBitrate = 128000 (4)
+            0x00, 0x01, 0xF4, 0x00,           // avgBitrate = 128000 (4)
+            ...decSpec,
+          ];
+          const decCfg = [0x04, dcContent.length, ...dcContent];
+          const esContent = [0x00, 0x00, 0x00, ...decCfg, 0x06, 0x01, 0x02];  // ES_ID(2)+flags(1)+decCfg+SLConfig
+          const esd = new Uint8Array([0x03, esContent.length, ...esContent]);
           aEntry = box("mp4a",
             new Uint8Array(6), u16(1), new Uint8Array(8),
             u16(channels), u16(16), u32(0), u32(sampleRate << 16),
