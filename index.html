@@ -630,7 +630,7 @@
 const $ = s => document.querySelector(s);
 /* Sürüm — her güncellemede artar; Pages'in yeni sürümü yayınlayıp
    yayınlamadığını buradan (Pisan Cut yanındaki rozetten) anlayabilirsin. */
-const APP_VERSION = "v1.7";
+const APP_VERSION = "v1.8";
 document.querySelectorAll(".ver").forEach(e => e.textContent = APP_VERSION);
 const canvas = $("#canvas"), ctx = canvas.getContext("2d", { alpha: false, desynchronized: true });
 
@@ -3908,6 +3908,7 @@ function exportModal(title, desc) {
   $("#progressInner").style.width = "0%";
   $("#modal").classList.add("open");
 }
+let lastExportInfo = "";
 function exportDone(blob, ext) {
   const url = URL.createObjectURL(blob);
   const dl = $("#dlLink");
@@ -3915,7 +3916,8 @@ function exportDone(blob, ext) {
   dl.download = "pisan-cut-" + Date.now() + "." + ext;
   dl.style.display = "block";
   $("#modalTitle").textContent = "Hazır! 🎉";
-  $("#modalDesc").textContent = "Videon (" + (blob.size / 1048576).toFixed(1) + " MB) indirilmeye hazır.";
+  $("#modalDesc").innerHTML = "Videon (" + (blob.size / 1048576).toFixed(1) + " MB) indirilmeye hazır." +
+    (lastExportInfo ? `<br><span style="font-size:10px;color:var(--dim)">${lastExportInfo}</span>` : "");
   $("#modalCancel").textContent = "Kapat";
   $("#progressInner").style.width = "100%";
 }
@@ -3944,6 +3946,13 @@ async function startExport() {
 
   if (window.VideoEncoder) {
     const plan = await buildExportPlan(hasAudio);
+    /* Bu cihazda ses kodlayıcı yoksa offline yol sessiz kalır — sesi
+       korumak için cihazın yerleşik kaydedicisine (gerçek zamanlı) geç */
+    if (plan && plan.audioNoEnc) {
+      toast("Bu cihaz kare kare ses kodlamayı desteklemiyor; sesli çıktı için gerçek zamanlı kayıt kullanılıyor");
+      await realtimeExport();
+      return;
+    }
     if (plan) {
       try {
         await fastRender(plan);
@@ -3981,14 +3990,14 @@ async function buildExportPlan(hasAudio) {
   }
   if (!vEnc) return null;
 
-  let aEnc = null, aKind = null;
+  let aEnc = null, aKind = null, audioNoEnc = false;
   if (hasAudio) {
     if (container === "mp4" && await audSup("mp4a.40.2")) { aEnc = "mp4a.40.2"; aKind = "aac"; }
     else if (await audSup("opus")) { aEnc = "opus"; aKind = "opus"; }
-    /* MP4 + yalnızca Opus destekleniyorsa Opus-in-MP4 kullanılır */
+    else audioNoEnc = true;   // hiçbir ses kodlayıcı desteklenmiyor
   }
   if (state.format === "mp4" && container !== "mp4") toast("Bu cihazda MP4 kodlama yok, WebM üretiliyor");
-  return { vEnc, vKind, container, aEnc, aKind };
+  return { vEnc, vKind, container, aEnc, aKind, audioNoEnc };
 }
 
 /* ---------- hızlı render: yardımcılar ---------- */
@@ -4433,6 +4442,7 @@ async function fastRender(plan) {
   /* 1) ses: video kodlamasıyla PARALEL mikslenir ve kodlanır */
   const audioJob = !withAudio ? Promise.resolve(null) : (async () => {
     const audioBuffer = await mixAudioOffline(total).catch(() => null);
+    audioBufCache.clear();   // kaynak PCM'i miks bitince hemen boşalt (bellek)
     if (!audioBuffer || exportAbort) return null;
     const chunks = [];
     let desc = null, count = 0;
@@ -4582,6 +4592,13 @@ async function fastRender(plan) {
     blob = webmMuxer.finish({ hasAudio: audioIncluded, opusHead });
     ext = "webm";
   }
+  /* tanı: hangi codec + ses gerçekten eklendi mi (iPad'de sorun ayıklama) */
+  const vName = plan.vKind === "avc" ? "H.264" : plan.vKind === "vp9" ? "VP9" : "VP8";
+  const aName = !withAudio ? "yok (projede ses değil)"
+    : audioIncluded ? (plan.aKind === "aac" ? "AAC" : "Opus")
+    : "YOK — ses kodlanamadı!";
+  lastExportInfo = `${ext.toUpperCase()} · Video: ${vName} · Ses: ${aName} · kare kare (offline)`;
+  audioBufCache.clear();   // çözülmüş ses PCM'ini bellekten boşalt
   finishExportUI();
   exportDone(blob, ext);
   seekTo(0, true);
@@ -4661,6 +4678,7 @@ async function realtimeExport() {
   if (exportAbort) return;
 
   const blob = new Blob(chunks, { type: mime.split(";")[0] });
+  lastExportInfo = `${ext.toUpperCase()} · ${mime.replace("video/", "")} · gerçek zamanlı (donanım kaydedici)`;
   exportDone(blob, ext);
 }
 
