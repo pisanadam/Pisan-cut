@@ -630,7 +630,7 @@
 const $ = s => document.querySelector(s);
 /* Sürüm — her güncellemede artar; Pages'in yeni sürümü yayınlayıp
    yayınlamadığını buradan (Pisan Cut yanındaki rozetten) anlayabilirsin. */
-const APP_VERSION = "v1.9";
+const APP_VERSION = "v2.0";
 document.querySelectorAll(".ver").forEach(e => e.textContent = APP_VERSION);
 const canvas = $("#canvas"), ctx = canvas.getContext("2d", { alpha: false, desynchronized: true });
 
@@ -3939,10 +3939,18 @@ async function startExport() {
     state.overlays.some(o => o.kind === "pip" && o.type === "video" && o.volume > 0) ||
     state.musics.length > 0;
 
-  /* Hızlı Mod: kare kare offline render yerine cihazın yerleşik
-     kaydedicisi (gerçek zamanlı). Safari/iPad'de kare kare sarma
-     yavaş olduğu için orada çok daha hızlıdır. */
-  if (state.fastMode) { await realtimeExport(); return; }
+  /* iOS/iPadOS = WebKit. Orada kendi MP4 muxer'ımız yerine cihazın
+     NATIVE kaydedicisi kullanılır (MP4'ü H.264+AAC ile doğru, sesli ve
+     donanım hızında üretir; kare kare sarma darboğazı da yok).
+     Masaüstü/Android offline WebCodecs yolunda kalır. */
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.maxTouchPoints > 1 && /Macintosh|Mac OS/.test(navigator.userAgent));
+  const nativeMp4 = window.MediaRecorder && MediaRecorder.isTypeSupported &&
+    (MediaRecorder.isTypeSupported("video/mp4") || MediaRecorder.isTypeSupported("video/mp4;codecs=avc1.42E01E,mp4a.40.2"));
+  if (state.fastMode || (state.format === "mp4" && isIOS && nativeMp4)) {
+    await realtimeExport();
+    return;
+  }
 
   if (window.VideoEncoder) {
     const plan = await buildExportPlan(hasAudio);
@@ -4613,14 +4621,23 @@ async function fastRender(plan) {
   seekTo(0, true);
 }
 
-/* ---------- yedek: gerçek zamanlı kayıt (MediaRecorder) ---------- */
+/* ---------- gerçek zamanlı kayıt (native MediaRecorder muxer) ---------- */
 async function realtimeExport() {
-  const mimes = [
+  const mp4First = [
+    "video/mp4;codecs=avc1.42E01E,mp4a.40.2",
+    "video/mp4;codecs=avc1,mp4a",
+    "video/mp4",
+    "video/webm;codecs=vp9,opus",
+    "video/webm;codecs=vp8,opus",
+    "video/webm",
+  ];
+  const webmFirst = [
     "video/webm;codecs=vp9,opus",
     "video/webm;codecs=vp8,opus",
     "video/webm",
     "video/mp4",
   ];
+  const mimes = state.format === "mp4" ? mp4First : webmFirst;
   const mime = mimes.find(m => window.MediaRecorder && MediaRecorder.isTypeSupported(m));
   if (!mime) { toast("Bu tarayıcı video kaydını desteklemiyor"); return; }
   const ext = mime.startsWith("video/mp4") ? "mp4" : "webm";
@@ -4657,32 +4674,43 @@ async function realtimeExport() {
   }
 
   const chunks = [];
+  let recErr = null;
   recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: exportBitrate() });
-  recorder.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+  recorder.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+  recorder.onerror = e => { recErr = e.error || e; };
 
   exportModal("Dışa aktarılıyor…", "Video gerçek zamanlı işleniyor, sekmeyi kapatma.");
 
   const done = new Promise(res => recorder.onstop = res);
+  /* ısınma: ilk kareyi çizip birkaç kare oturmasını bekle (iOS'ta ilk
+     karelerin boş/donuk kaydedilmesini önler) */
   seekTo(0, true);
-  await new Promise(r => setTimeout(r, 250)); // ilk kare otursun
-  recorder.start(500);
+  drawFrame();
+  await new Promise(r => setTimeout(r, 400));
+  /* tek parça kayıt (timeslice yok) — iOS'ta en güvenilir yol */
+  recorder.start();
   play();
 
   const total = totalDur();
   await new Promise(res => {
     const iv = setInterval(() => {
       $("#progressInner").style.width = Math.min(state.t / total * 100, 100) + "%";
-      if (exportAbort || (!state.playing && state.t >= total - .05)) {
+      $("#modalDesc").textContent = "Gerçek zamanlı: " + fmt(state.t) + " / " + fmt(total);
+      if (recErr || exportAbort || (!state.playing && state.t >= total - .05)) {
         clearInterval(iv);
         res();
       }
     }, 120);
   });
 
-  if (recorder.state !== "inactive") recorder.stop();
+  /* son karelerin de kaydedilmesi için minik pay bırak, sonra durdur */
+  await new Promise(r => setTimeout(r, 300));
+  try { if (recorder.state !== "inactive") { recorder.requestData(); recorder.stop(); } } catch (_) {}
   await done;
   pause();
   finishExportUI();
+
+  if (recErr) { toast("Kayıt hatası: " + (recErr.message || recErr)); return; }
 
   if (exportAbort) return;
 
