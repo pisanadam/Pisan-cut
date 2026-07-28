@@ -45,6 +45,7 @@ Ayarlar → Pages → dalı seç → yayınla.
 - 🔍 **Video Upscale (aç/kapa)**: Açıkken çıktı %50 büyütülüp yüksek kaliteli ölçekleme ile kodlanır; yazılar, çıkartmalar ve efektler yüksek çözünürlükte yeniden çizildiği için gerçekten daha keskin çıkar
 - 🎞 **Kare Üretici (aç/kapa)**: 60/90/120 fps dışa aktarmada düşük fps'li kaynaklar için ara kareler harmanlanarak üretilir (echo frame blending) — hareket akıcılaşır; yalnızca 60 fps ve üstünde etkilidir
 - 📤 **Hızlı render (CapCut tarzı)**: WebCodecs destekleyen tarayıcılarda video kare kare offline kodlanır, ses offline mikslenir — önizleme taksa bile çıktı her zaman akıcıdır ve çoğu cihazda gerçek zamandan hızlı biter. WebCodecs yoksa MediaRecorder ile gerçek zamanlı kayda düşer.
+- ⚡ **Hızlı Mod (gerçek zamanlı)**: Dışa aktarma panelinden açılır; kare kare offline render yerine cihazın yerleşik donanım kaydedicisini kullanır (Safari/iPad'de doğrudan MP4). Safari/iPadOS'ta `<video>` kare kare sarma yavaş olduğu için orada çok daha hızlıdır (render ≈ video süresi).
 - ⚡ **Akıcı önizleme**: Düzenleme sırasında canvas ekran çözünürlüğünde çalışır (dışa aktarmada tam çözünürlüğe geçer), kare yalnızca gerektiğinde yeniden çizilir
 
 ## Nasıl çalışıyor?

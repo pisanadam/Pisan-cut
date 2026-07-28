@@ -630,7 +630,7 @@
 const $ = s => document.querySelector(s);
 /* Sürüm — her güncellemede artar; Pages'in yeni sürümü yayınlayıp
    yayınlamadığını buradan (Pisan Cut yanındaki rozetten) anlayabilirsin. */
-const APP_VERSION = "v1.5";
+const APP_VERSION = "v1.6";
 document.querySelectorAll(".ver").forEach(e => e.textContent = APP_VERSION);
 const canvas = $("#canvas"), ctx = canvas.getContext("2d", { alpha: false, desynchronized: true });
 
@@ -849,6 +849,7 @@ const state = {
   upscale: false,    // açıkken çıktı %50 büyütülüp yüksek kaliteli ölçeklenir
   frameGen: false,   // kare üretici: 60+ fps'te ara kare harmanlama
   format: "mp4",     // çıktı formatı: mp4 | webm
+  fastMode: false,   // gerçek zamanlı (donanım kaydedici) — Safari/iPad için
   exportW: 720,
   exportH: 1280,
   rendering: false,
@@ -906,7 +907,7 @@ function snapState() {
     overlays: state.overlays.map(o => ({ ...o })),
     musics: state.musics.map(m => ({ ...m })),
     aspect: state.aspect, resolution: state.resolution, fps: state.fps,
-    upscale: state.upscale, frameGen: state.frameGen, format: state.format, leadGap: state.leadGap,
+    upscale: state.upscale, frameGen: state.frameGen, format: state.format, fastMode: state.fastMode, leadGap: state.leadGap,
   };
 }
 function stateJson() { try { return JSON.stringify(projectData()); } catch (_) { return String(Math.random()); } }
@@ -929,6 +930,7 @@ function applySnap(s) {
   state.upscale = !!s.upscale;
   state.frameGen = !!s.frameGen;
   state.format = s.format || "mp4";
+  state.fastMode = !!s.fastMode;
   state.leadGap = s.leadGap || 0;
   if (aspectChanged) applyAspect();
   $("#emptyState").style.display = state.clips.length ? "none" : "flex";
@@ -3863,6 +3865,16 @@ $("#btnExport").onclick = () => {
     fgNote.style.cssText = "font-size:10px;color:var(--dim);margin:2px 0 0";
     fgNote.textContent = "60/90/120 fps'te düşük fps'li kaynaklardan ara kareler harmanlanarak üretilir (frame blending) — hareket daha akıcı görünür. Yalnızca 60 fps ve üstünde etkilidir.";
     body.appendChild(fgNote);
+    const fm = document.createElement("button");
+    fm.className = "sheetBtn";
+    const fmLabel = () => "⚡ Hızlı Mod (gerçek zamanlı): " + (state.fastMode ? "Açık" : "Kapalı");
+    fm.textContent = fmLabel();
+    fm.onclick = () => { state.fastMode = !state.fastMode; fm.textContent = fmLabel(); };
+    body.appendChild(fm);
+    const fmNote = document.createElement("p");
+    fmNote.style.cssText = "font-size:10px;color:var(--dim);margin:2px 0 0";
+    fmNote.textContent = "iPad / iPhone / Safari için önerilir. Cihazın yerleşik donanım kaydedicisini kullanır — kare kare sarma beklemesi olmadığı için çok daha hızlıdır (render ≈ video süresi). Kapalıyken kare kare tam kalite render alınır (bazı cihazlarda yavaş).";
+    body.appendChild(fmNote);
     const est = document.createElement("p");
     est.style.cssText = "font-size:12px;color:var(--dim);text-align:center;margin:14px 0 4px";
     body.appendChild(est);
@@ -3924,6 +3936,11 @@ async function startExport() {
   const hasAudio = state.clips.some(c => c.type === "video" && c.volume > 0) ||
     state.overlays.some(o => o.kind === "pip" && o.type === "video" && o.volume > 0) ||
     state.musics.length > 0;
+
+  /* Hızlı Mod: kare kare offline render yerine cihazın yerleşik
+     kaydedicisi (gerçek zamanlı). Safari/iPad'de kare kare sarma
+     yavaş olduğu için orada çok daha hızlıdır. */
+  if (state.fastMode) { await realtimeExport(); return; }
 
   if (window.VideoEncoder) {
     const plan = await buildExportPlan(hasAudio);
@@ -4656,6 +4673,7 @@ function projectData() {
     upscale: state.upscale,
     frameGen: state.frameGen,
     format: state.format,
+    fastMode: state.fastMode,
     leadGap: state.leadGap,
     clips: state.clips.map(c => ({
       mediaId: c.mediaId, type: c.type, name: c.name, natDur: c.natDur, color: c.color,
@@ -4719,6 +4737,7 @@ async function newProject(tool) {
   state.upscale = false;
   state.frameGen = false;
   state.format = "mp4";
+  state.fastMode = false;
   applyAspect();
   clearHistory();
   pendingTool = tool || null;
@@ -4736,6 +4755,7 @@ async function openProject(rec) {
   state.upscale = !!rec.data.upscale;
   state.frameGen = !!rec.data.frameGen;
   state.format = rec.data.format || "mp4";
+  state.fastMode = !!rec.data.fastMode;
   state.leadGap = rec.data.leadGap || 0;
   applyAspect();
   toast("Proje açılıyor…");
