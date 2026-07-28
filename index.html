@@ -639,7 +639,7 @@
 const $ = s => document.querySelector(s);
 /* Sürüm — her güncellemede artar; Pages'in yeni sürümü yayınlayıp
    yayınlamadığını buradan (Pisan Cut yanındaki rozetten) anlayabilirsin. */
-const APP_VERSION = "v2.6";
+const APP_VERSION = "v2.7";
 document.querySelectorAll(".ver").forEach(e => e.textContent = APP_VERSION);
 
 /* iOS/iPadOS (Apple WebKit) tespiti — iPad'ler kendini "Macintosh" gösterir,
@@ -4195,14 +4195,211 @@ async function renderSeekExtras(t) {
   }
 }
 
+/* ---------- MP4/MOV ses izi demux'u (WebKit için) ----------
+   Safari'nin decodeAudioData'sı VİDEO kapsayıcısından (MP4/MOV) ses
+   çıkaramaz — Chrome çıkarır. Bu yüzden iPad'de dışa aktarılan videonun
+   sesi kayboluyordu. Çözüm: ses izini kendimiz ayrıştırıp WebCodecs
+   AudioDecoder ile çözmek (Safari 16.4+ destekler). */
+function mp4ReadBoxes(dv, start, end, cb) {
+  let p = start;
+  while (p + 8 <= end) {
+    let size = dv.getUint32(p), hdr = 8;
+    const type = String.fromCharCode(dv.getUint8(p + 4), dv.getUint8(p + 5), dv.getUint8(p + 6), dv.getUint8(p + 7));
+    if (size === 1) {
+      if (p + 16 > end) break;
+      size = dv.getUint32(p + 8) * 4294967296 + dv.getUint32(p + 12);
+      hdr = 16;
+    } else if (size === 0) size = end - p;
+    if (size < hdr || p + size > end) break;
+    if (cb(type, p + hdr, p + size) === false) return;
+    p += size;
+  }
+}
+/* esds içindeki DecoderSpecificInfo (AudioSpecificConfig) */
+function mp4FindASC(dv, start, end) {
+  let p = start + 4;   // fullbox ver/flags
+  const readLen = () => {
+    let v = 0, b;
+    do { b = dv.getUint8(p++); v = (v << 7) | (b & 0x7f); } while (b & 0x80);
+    return v;
+  };
+  while (p < end) {
+    const tag = dv.getUint8(p++);
+    const len = readLen();
+    if (tag === 0x03) { p += 2; const f = dv.getUint8(p++); if (f & 0x80) p += 2; if (f & 0x40) p += dv.getUint8(p) + 1; if (f & 0x20) p += 2; continue; }
+    if (tag === 0x04) { p += 13; continue; }   // objType+streamType+bufSize+bitrates
+    if (tag === 0x05) return new Uint8Array(dv.buffer, dv.byteOffset + p, Math.min(len, end - p)).slice();
+    p += len;
+  }
+  return null;
+}
+/* ArrayBuffer → { codec, sampleRate, channels, description, samples[] } */
+function demuxMp4Audio(ab) {
+  try {
+    const dv = new DataView(ab);
+    let moovS = -1, moovE = -1;
+    mp4ReadBoxes(dv, 0, ab.byteLength, (t, s, e) => { if (t === "moov") { moovS = s; moovE = e; return false; } });
+    if (moovS < 0) return null;
+    let out = null;
+    mp4ReadBoxes(dv, moovS, moovE, (t, trakS, trakE) => {
+      if (t !== "trak" || out) return;
+      let isSound = false, timescale = 1, stblS = -1, stblE = -1;
+      mp4ReadBoxes(dv, trakS, trakE, (t2, mdiaS, mdiaE) => {
+        if (t2 !== "mdia") return;
+        mp4ReadBoxes(dv, mdiaS, mdiaE, (t3, s3, e3) => {
+          if (t3 === "mdhd") { const v = dv.getUint8(s3); timescale = v === 1 ? dv.getUint32(s3 + 20) : dv.getUint32(s3 + 12); }
+          else if (t3 === "hdlr") { isSound = String.fromCharCode(dv.getUint8(s3 + 8), dv.getUint8(s3 + 9), dv.getUint8(s3 + 10), dv.getUint8(s3 + 11)) === "soun"; }
+          else if (t3 === "minf") mp4ReadBoxes(dv, s3, e3, (t4, s4, e4) => { if (t4 === "stbl") { stblS = s4; stblE = e4; } });
+        });
+      });
+      if (!isSound || stblS < 0) return;
+
+      let codec = null, sampleRate = 0, channels = 2, description = null;
+      let stts = [], stsz = [], sizeAll = 0, count = 0, stsc = [], chunkOff = [];
+      mp4ReadBoxes(dv, stblS, stblE, (t2, s2, e2) => {
+        if (t2 === "stsd") {
+          mp4ReadBoxes(dv, s2 + 8, e2, (fmt, es, ee) => {
+            const ver = dv.getUint16(es + 8);
+            channels = dv.getUint16(es + 16) || 2;
+            sampleRate = dv.getUint32(es + 24) >>> 16;
+            const childS = es + 28 + (ver === 1 ? 16 : ver === 2 ? 36 : 0);
+            if (fmt === "mp4a") {
+              codec = "mp4a.40.2";
+              mp4ReadBoxes(dv, childS, ee, (ct, cs, ce) => {
+                if (ct === "esds") description = mp4FindASC(dv, cs, ce);
+                else if (ct === "wave") mp4ReadBoxes(dv, cs, ce, (wt, ws, we) => { if (wt === "esds") description = mp4FindASC(dv, ws, we); });
+              });
+            } else if (fmt === "Opus") codec = "opus";
+            return false;
+          });
+        } else if (t2 === "stts") {
+          const n = dv.getUint32(s2 + 4);
+          for (let i = 0; i < n; i++) stts.push([dv.getUint32(s2 + 8 + i * 8), dv.getUint32(s2 + 12 + i * 8)]);
+        } else if (t2 === "stsz") {
+          sizeAll = dv.getUint32(s2 + 4); count = dv.getUint32(s2 + 8);
+          if (!sizeAll) for (let i = 0; i < count; i++) stsz.push(dv.getUint32(s2 + 12 + i * 4));
+        } else if (t2 === "stsc") {
+          const n = dv.getUint32(s2 + 4);
+          for (let i = 0; i < n; i++) stsc.push([dv.getUint32(s2 + 8 + i * 12), dv.getUint32(s2 + 12 + i * 12)]);
+        } else if (t2 === "stco") {
+          const n = dv.getUint32(s2 + 4);
+          for (let i = 0; i < n; i++) chunkOff.push(dv.getUint32(s2 + 8 + i * 4));
+        } else if (t2 === "co64") {
+          const n = dv.getUint32(s2 + 4);
+          for (let i = 0; i < n; i++) chunkOff.push(dv.getUint32(s2 + 8 + i * 8) * 4294967296 + dv.getUint32(s2 + 12 + i * 8));
+        }
+      });
+      if (!codec || !count || !chunkOff.length || !stsc.length) return;
+
+      /* örnek başına boyut + zaman damgası + dosya konumu */
+      const sizeOf = i => sizeAll || stsz[i] || 0;
+      const durs = [];
+      for (const [c, d] of stts) for (let i = 0; i < c && durs.length < count; i++) durs.push(d);
+      while (durs.length < count) durs.push(durs[durs.length - 1] || 1024);
+
+      const samples = [];
+      let si = 0, tAcc = 0;
+      for (let ci = 0; ci < chunkOff.length && si < count; ci++) {
+        let per = stsc[stsc.length - 1][1];
+        for (let k = 0; k < stsc.length; k++) {
+          if (ci + 1 >= stsc[k][0] && (k + 1 === stsc.length || ci + 1 < stsc[k + 1][0])) { per = stsc[k][1]; break; }
+        }
+        let off = chunkOff[ci];
+        for (let j = 0; j < per && si < count; j++, si++) {
+          const sz = sizeOf(si);
+          samples.push({ offset: off, size: sz, timestamp: Math.round(tAcc / timescale * 1e6), duration: Math.round(durs[si] / timescale * 1e6) });
+          off += sz; tAcc += durs[si];
+        }
+      }
+      if (samples.length) out = { codec, sampleRate: sampleRate || 48000, channels, description, samples };
+    });
+    return out;
+  } catch (_) { return null; }
+}
+/* WebCodecs ile ses izini çöz → AudioBuffer (Safari yolu) */
+async function decodeAudioWebCodecs(blob) {
+  if (!window.AudioDecoder) return null;
+  const ab = await blob.arrayBuffer();
+  const info = demuxMp4Audio(ab);
+  if (!info || !info.samples.length) return null;
+  const bytes = new Uint8Array(ab);
+  const cfg = { codec: info.codec, sampleRate: info.sampleRate, numberOfChannels: info.channels };
+  if (info.description && info.description.length) cfg.description = info.description;
+  try {
+    const sup = await AudioDecoder.isConfigSupported(cfg);
+    if (!sup || !sup.supported) return null;
+  } catch (_) { return null; }
+  const parts = [];
+  let derr = null;
+  const dec = new AudioDecoder({
+    output: d => {
+      const ch = d.numberOfChannels, n = d.numberOfFrames;
+      const planes = [];
+      for (let c = 0; c < ch; c++) {
+        const f = new Float32Array(n);
+        try { d.copyTo(f, { planeIndex: c, format: "f32-planar" }); } catch (_) {}
+        planes.push(f);
+      }
+      parts.push({ planes, n, rate: d.sampleRate, ch });
+      d.close();
+    },
+    error: e => { derr = e; },
+  });
+  try { dec.configure(cfg); } catch (_) { return null; }
+  for (const s of info.samples) {
+    if (derr) break;
+    if (!s.size) continue;
+    try {
+      dec.decode(new EncodedAudioChunk({
+        type: "key", timestamp: s.timestamp, duration: s.duration,
+        data: bytes.subarray(s.offset, s.offset + s.size),
+      }));
+    } catch (_) { break; }
+  }
+  try { await dec.flush(); } catch (_) {}
+  try { dec.close(); } catch (_) {}
+  if (!parts.length) return null;
+  const rate = parts[0].rate || info.sampleRate;
+  const ch = Math.max(1, ...parts.map(p => p.ch));
+  const totalFrames = parts.reduce((a, p) => a + p.n, 0);
+  if (!totalFrames) return null;
+  audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+  const buf = audioCtx.createBuffer(ch, totalFrames, rate);
+  let off = 0;
+  for (const p of parts) {
+    for (let c = 0; c < ch; c++) {
+      const src = p.planes[Math.min(c, p.planes.length - 1)];
+      if (src) buf.getChannelData(c).set(src, off);
+    }
+    off += p.n;
+  }
+  return buf;
+}
+
+let audioDiag = "";   // ses neden gelmedi? (tanı satırında gösterilir)
 const audioBufCache = new Map();
-async function decodeMediaAudio(mediaId) {
+async function decodeMediaAudio(mediaId, el) {
   if (audioBufCache.has(mediaId)) return audioBufCache.get(mediaId);
-  let buf = null;
+  let buf = null, blob = null;
   try {
     audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
     const rec = await idbGet("media", mediaId);
-    if (rec) buf = await audioCtx.decodeAudioData(await rec.blob.arrayBuffer());
+    if (rec && rec.blob) blob = rec.blob;
+    /* IndexedDB'de yoksa elemanın kaynağından çek (kayıt yapılmamış olabilir) */
+    if (!blob && el) {
+      const u = el.currentSrc || el.src;
+      if (u) blob = await fetch(u).then(r => r.blob()).catch(() => null);
+    }
+    if (!blob) { audioDiag = audioDiag || "medya bulunamadı"; audioBufCache.set(mediaId, null); return null; }
+    /* 1) hızlı yol: decodeAudioData (Chrome video kapsayıcısını da çözer) */
+    try { buf = await audioCtx.decodeAudioData(await blob.arrayBuffer()); }
+    catch (_) { buf = null; }
+    /* 2) WebKit yolu: MP4/MOV ses izini demux edip WebCodecs ile çöz */
+    if (!buf) {
+      buf = await decodeAudioWebCodecs(blob).catch(() => null);
+      if (buf) audioDiag = "WebCodecs ile çözüldü";
+      else audioDiag = "ses izi çözülemedi";
+    }
   } catch (_) { buf = null; }
   audioBufCache.set(mediaId, buf);
   return buf;
@@ -4211,12 +4408,19 @@ async function decodeMediaAudio(mediaId) {
 /* tüm ses parçalarını offline miksle → tek AudioBuffer */
 async function mixAudioOffline(totalSec) {
   const sr = 48000;
-  const oac = new OfflineAudioContext(2, Math.max(Math.ceil(totalSec * sr), sr), sr);
+  const frames = Math.max(Math.ceil(totalSec * sr), sr);
+  /* bazı WebKit sürümleri 48k OfflineAudioContext'i reddeder → 44.1k'ya düş */
+  let oac = null;
+  try { oac = new OfflineAudioContext(2, frames, sr); }
+  catch (_) {
+    try { oac = new OfflineAudioContext(2, Math.max(Math.ceil(totalSec * 44100), 44100), 44100); audioDiag = "44.1kHz'e düşüldü"; }
+    catch (e2) { audioDiag = "OfflineAudioContext açılamadı"; return null; }
+  }
   let any = false, t0 = 0;
   for (const c of state.clips) {
     const d = clipDur(c);
     if (c.type === "video" && c.volume > 0 && c.mediaId) {
-      const buf = await decodeMediaAudio(c.mediaId);
+      const buf = await decodeMediaAudio(c.mediaId, c.el);
       if (buf) {
         const src = oac.createBufferSource();
         src.buffer = buf;
@@ -4233,7 +4437,7 @@ async function mixAudioOffline(totalSec) {
   for (const o of state.overlays) {
     if (o.kind !== "pip" || o.type !== "video" || !o.mediaId || o.volume <= 0) continue;
     if (o.start >= totalSec) continue;
-    const buf = await decodeMediaAudio(o.mediaId);
+    const buf = await decodeMediaAudio(o.mediaId, o.el);
     if (!buf) continue;
     const src = oac.createBufferSource();
     src.buffer = buf;
@@ -4247,7 +4451,7 @@ async function mixAudioOffline(totalSec) {
   }
   for (const m of state.musics) {
     if (!m.mediaId || m.volume <= 0 || m.start >= totalSec) continue;
-    const buf = await decodeMediaAudio(m.mediaId);
+    const buf = await decodeMediaAudio(m.mediaId, m.el);
     if (!buf) continue;
     const src = oac.createBufferSource();
     src.buffer = buf;
@@ -4265,7 +4469,7 @@ async function mixAudioOffline(totalSec) {
       try { src.start(m.start, Math.min(m.in, buf.duration), playSrc); any = true; } catch (_) {}
     }
   }
-  if (!any) return null;
+  if (!any) { audioDiag = audioDiag || "hiçbir ses kaynağı çözülemedi"; return null; }
   return oac.startRendering();
 }
 
@@ -4731,6 +4935,7 @@ async function fastRender(plan) {
   const fps = state.fps;
   const frames = Math.max(Math.ceil(total * fps), 1);
   const withAudio = !!plan.aEnc;
+  audioDiag = "";
   exportModal("Render alınıyor…", "Kare kare işleniyor — takılma olmadan, tam kalitede.");
 
   state.rendering = true;
@@ -5015,9 +5220,9 @@ async function fastRender(plan) {
   const vName = plan.vKind === "avc" ? "H.264" : plan.vKind === "vp9" ? "VP9" : "VP8";
   const opusInMp4 = isMp4 && audioIncluded && plan.aKind === "opus";
   const aName = !withAudio ? "yok (projede ses değil)"
-    : !audioIncluded ? "YOK — ses kodlanamadı!"
+    : !audioIncluded ? "YOK — " + (audioDiag || "ses kodlanamadı")
     : opusInMp4 ? "Opus (⚠ iOS bunu MP4'te çalmaz!)"
-    : plan.aKind === "aac" ? "AAC" : "Opus";
+    : (plan.aKind === "aac" ? "AAC" : "Opus") + (audioDiag ? " · " + audioDiag : "");
   const gpuName = glRenderer ? " (" + String(glRenderer).replace(/^ANGLE \(/, "").replace(/\)$/, "").slice(0, 48) + ")" : "";
   const gpuTag = `GPU:${state.gpu ? encMode + (useGL ? "+WebGL" + gpuName : "") : "kapalı"}`;
   const timing = `${renderSec.toFixed(0)}sn · ${gpuTag} · ${LANES} hat · seek ${perFrame(tSeekMs)}ms/k · çiz ${perFrame(tDrawMs)}ms/k · bekle ${perFrame(tWaitMs)}ms/k`
