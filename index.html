@@ -639,7 +639,7 @@
 const $ = s => document.querySelector(s);
 /* Sürüm — her güncellemede artar; Pages'in yeni sürümü yayınlayıp
    yayınlamadığını buradan (Pisan Cut yanındaki rozetten) anlayabilirsin. */
-const APP_VERSION = "v2.5";
+const APP_VERSION = "v2.6";
 document.querySelectorAll(".ver").forEach(e => e.textContent = APP_VERSION);
 
 /* iOS/iPadOS (Apple WebKit) tespiti — iPad'ler kendini "Macintosh" gösterir,
@@ -4111,18 +4111,37 @@ async function startExport() {
    düşülür (gerçek telefonlarda H.264+AAC yolu kullanılır). */
 async function buildExportPlan(hasAudio) {
   const W = state.exportW, H = state.exportH;
-  const vidSup = async c => { try { return (await VideoEncoder.isConfigSupported({ codec: c, width: W, height: H, bitrate: exportBitrate(), framerate: state.fps })).supported; } catch (_) { return false; } };
+  /* hw: "prefer-hardware" verilirse yalnızca DONANIM kodlanabilen config'ler
+     destekli sayılır (GPU kodlayıcıyı — NVENC/QuickSync/AMF/VideoToolbox —
+     gerçekten seçebilmek için) */
+  const vidSup = async (c, hw) => {
+    try {
+      const cfg = { codec: c, width: W, height: H, bitrate: exportBitrate(), framerate: state.fps };
+      if (hw) cfg.hardwareAcceleration = hw;
+      const s = await VideoEncoder.isConfigSupported(cfg);
+      return !!(s && s.supported);
+    } catch (_) { return false; }
+  };
   const audSup = async c => { if (!window.AudioEncoder) return false; try { return (await AudioEncoder.isConfigSupported({ codec: c, sampleRate: 48000, numberOfChannels: 2, bitrate: 128000 })).supported; } catch (_) { return false; } };
 
-  const AVC = ["avc1.4d0028", "avc1.42001f", "avc1.640028", "avc1.42e01f"];
-  let vEnc = null, vKind = null, container = null;
+  /* H.264 aday listesi — YÜKSEK seviyeler önce (eski hardcoded seviye 4.0,
+     yüksek çözünürlük/fps'te desteklenmediği için VP9 yazılıma düşüyordu;
+     RTX/NVENC ise H.264 donanım kodlar). High profil: avc1.6400LL,
+     seviye 5.2=34, 6.2=3e, 5.1=33, 4.2=2a, 4.1=29, 4.0=28. */
+  const AVC = ["avc1.640034", "avc1.64003e", "avc1.640033", "avc1.64002a", "avc1.640029", "avc1.640028", "avc1.4d0028", "avc1.42e01f"];
+  let vEnc = null, vKind = null, container = null, vHw = false;
 
   if (state.format === "mp4") {
-    for (const c of AVC) if (await vidSup(c)) { vEnc = c; vKind = "avc"; container = "mp4"; break; }
+    /* GPU açıksa önce DONANIM kodlanabilen H.264'ü ara (NVENC'i seçtirir) */
+    if (state.gpu) for (const c of AVC) if (await vidSup(c, "prefer-hardware")) { vEnc = c; vKind = "avc"; container = "mp4"; vHw = true; break; }
+    if (!vEnc) for (const c of AVC) if (await vidSup(c)) { vEnc = c; vKind = "avc"; container = "mp4"; break; }
+    /* H.264 hiç yoksa VP9-MP4 (NVENC VP9 kodlamaz → yazılım; son çare) */
+    if (!vEnc && state.gpu && await vidSup("vp09.00.10.08", "prefer-hardware")) { vEnc = "vp09.00.10.08"; vKind = "vp9"; container = "mp4"; vHw = true; }
     if (!vEnc && await vidSup("vp09.00.10.08")) { vEnc = "vp09.00.10.08"; vKind = "vp9"; container = "mp4"; }
   }
   if (!vEnc) {   // webm istendi ya da mp4 için codec yok
-    if (await vidSup("vp09.00.10.08")) { vEnc = "vp09.00.10.08"; vKind = "vp9"; }
+    if (state.gpu && await vidSup("vp09.00.10.08", "prefer-hardware")) { vEnc = "vp09.00.10.08"; vKind = "vp9"; vHw = true; }
+    else if (await vidSup("vp09.00.10.08")) { vEnc = "vp09.00.10.08"; vKind = "vp9"; }
     else if (await vidSup("vp8")) { vEnc = "vp8"; vKind = "vp8"; }
     container = "webm";
   }
@@ -4139,7 +4158,7 @@ async function buildExportPlan(hasAudio) {
      AAC). Sessiz video vermektense oraya yönlendir. */
   const opusMp4Unplayable = IS_APPLE_WK && container === "mp4" && aKind === "opus";
   if (state.format === "mp4" && container !== "mp4") toast("Bu cihazda MP4 kodlama yok, WebM üretiliyor");
-  return { vEnc, vKind, container, aEnc, aKind, audioNoEnc, opusMp4Unplayable };
+  return { vEnc, vKind, container, aEnc, aKind, audioNoEnc, opusMp4Unplayable, vHw };
 }
 
 /* ---------- hızlı render: yardımcılar ---------- */
@@ -4883,7 +4902,7 @@ async function fastRender(plan) {
      başlıyor? (iPad'de kesin veri için — kullanıcı bu satırı bize iletir) */
   const t0render = performance.now();
   let tSeekMs = 0, tDrawMs = 0, tWaitMs = 0;
-  let slowFrom = -1;
+  let slowFrom = -1, slowRun = 0, slowRunStart = -1;
 
   const win = [];   // sırayla bekleyen kareler (en fazla LANES adet uçuşta)
   let nextSched = 0;
@@ -4944,14 +4963,16 @@ async function fastRender(plan) {
       ]);
     }
     tWaitMs += performance.now() - w0;
-    /* yavaşlama tespiti: bu karenin süresi o ana kadarki ortalamanın
-       6 katından fazlaysa "yavaşlama başladı" olarak işaretle */
+    /* yavaşlama tespiti: tek karelik sıçramalar (kodlayıcı kuyruğu, GC) yanlış
+       alarm veriyordu. Gerçek çöküş SÜREKLİDİR → ancak ART ARDA 8 kare hem
+       ortalamanın 5 katı HEM de >300ms olursa işaretle */
     const frameMs = performance.now() - tFrame0;
     if (slowFrom < 0 && i > 20) {
       const avgSoFar = (performance.now() - t0render) / (i + 1);
-      /* gerçek çöküş: hem ortalamanın 6 katı HEM de mutlak olarak yavaş
-         (>250ms) — geçiş sınırındaki kısa sıçramaları yanlış işaretlemesin */
-      if (frameMs > avgSoFar * 6 && frameMs > 250) slowFrom = i;
+      if (frameMs > avgSoFar * 5 && frameMs > 300) {
+        if (slowRun === 0) slowRunStart = i;
+        if (++slowRun >= 8) slowFrom = slowRunStart;
+      } else { slowRun = 0; slowRunStart = -1; }
     }
     $("#progressInner").style.width = (i / frames * 100).toFixed(1) + "%";
     $("#modalDesc").textContent = `Kare ${i + 1} / ${frames} · ${LANES} hat`;
