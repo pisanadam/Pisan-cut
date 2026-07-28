@@ -268,6 +268,15 @@
   }
   .chip.sel { border-color:var(--accent); color:var(--accent); font-weight:700; }
   .subhead { font-size:11px; color:var(--dim); font-weight:700; letter-spacing:.5px; text-transform:uppercase; margin:14px 0 8px; }
+  .numRow { display:flex; align-items:center; gap:10px; margin:8px 0 2px; }
+  .numRow label { font-size:12px; color:var(--dim); min-width:96px; }
+  .numRow input[type=number] {
+    flex:1; min-width:0; padding:9px 12px; border-radius:10px; background:var(--bg3);
+    color:var(--text); border:1px solid transparent; font-size:14px; font-variant-numeric:tabular-nums;
+  }
+  .numRow input[type=number]:focus { border-color:var(--accent); outline:none; }
+  .numRow .numSuffix { font-size:12px; color:var(--dim); min-width:26px; }
+  .numRow.err input[type=number] { border-color:#ef4444; }
   .filterGrid { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
   .fItem { display:flex; flex-direction:column; align-items:center; gap:5px; }
   .fItem .sw {
@@ -630,7 +639,7 @@
 const $ = s => document.querySelector(s);
 /* Sürüm — her güncellemede artar; Pages'in yeni sürümü yayınlayıp
    yayınlamadığını buradan (Pisan Cut yanındaki rozetten) anlayabilirsin. */
-const APP_VERSION = "v2.2";
+const APP_VERSION = "v2.3";
 document.querySelectorAll(".ver").forEach(e => e.textContent = APP_VERSION);
 
 /* iOS/iPadOS (Apple WebKit) tespiti — iPad'ler kendini "Macintosh" gösterir,
@@ -643,11 +652,26 @@ const canvas = $("#canvas"), ctx = canvas.getContext("2d", { alpha: false, desyn
 
 /* en-boy oranları (oran olarak; gerçek boyut çözünürlük seçimiyle hesaplanır) */
 const ASPECTS = {
-  "9:16": [9, 16],
-  "16:9": [16, 9],
-  "1:1":  [1, 1],
-  "4:5":  [4, 5],
+  "9:16":   [9, 16],
+  "16:9":   [16, 9],
+  "1:1":    [1, 1],
+  "4:5":    [4, 5],
+  "5:4":    [5, 4],
+  "3:4":    [3, 4],
+  "4:3":    [4, 3],
+  "2:3":    [2, 3],
+  "3:2":    [3, 2],
+  "21:9":   [21, 9],
+  "9:21":   [9, 21],
+  "2.35:1": [235, 100],
 };
+/* state.aspect ya bir ön ayar anahtarı ya da "G:Y" özel dizesidir */
+function aspectWH() {
+  if (ASPECTS[state.aspect]) return ASPECTS[state.aspect];
+  const m = String(state.aspect).split(":").map(parseFloat);
+  if (m.length === 2 && m[0] > 0 && m[1] > 0) return [m[0], m[1]];
+  return [9, 16];
+}
 const RES_OPTS = { 480: "480p", 720: "720p", 1080: "1080p", 1440: "2K β", 2160: "4K β" };
 const FPS_OPTS = { 5: "5 fps", 10: "10 fps", 15: "15 fps", 20: "20 fps", 24: "24 fps", 30: "30 fps", 60: "60 fps", 90: "90 fps β", 120: "120 fps β" };
 
@@ -2602,6 +2626,36 @@ function subhead(body, text) {
   body.appendChild(h);
 }
 
+/* chipRow'un seçili kutucuğunu bir değere göre güncelle (klavye girişi
+   bir ön ayarla eşleşince onu vurgular, değilse hiçbirini) */
+function syncChips(chips, options, curKey) {
+  const keys = Object.keys(options);
+  [...chips.children].forEach((c, i) => c.classList.toggle("sel", keys[i] === curKey));
+}
+
+/* klavyeyle sayı girişi: Enter'da veya odak kaybında aralığa kırpılıp
+   uygulanır. Dışarıdan güncellenebilsin diye input elemanı döndürülür. */
+function numRow(body, { label, value, min, max, step = 1, suffix = "", onApply }) {
+  const row = document.createElement("div");
+  row.className = "numRow";
+  row.innerHTML = `<label>${label}</label>` +
+    `<input type="number" inputmode="numeric" min="${min}" max="${max}" step="${step}" value="${value}">` +
+    (suffix ? `<span class="numSuffix">${suffix}</span>` : "");
+  const inp = row.querySelector("input");
+  const commit = () => {
+    let v = Math.round(parseFloat(inp.value));
+    if (!isFinite(v)) v = value;
+    v = clamp(v, min, max);
+    inp.value = v;
+    row.classList.remove("err");
+    onApply(v);
+  };
+  inp.onchange = commit;
+  inp.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); inp.blur(); } });
+  body.appendChild(row);
+  return inp;
+}
+
 /* arama + kategori sekmeleri + kutucuk ızgarası: efekt/filtre/geçiş panelleri */
 function buildCatalog(body, { cats, entries, selectedKey, renderTile, onPick, multi }) {
   const search = document.createElement("input");
@@ -3732,26 +3786,61 @@ $("#fileMusic").onchange = async e => {
 /* ---------- Oran ---------- */
 function openAspectSheet() {
   openSheet("En-Boy Oranı", body => {
+    subhead(body, "Ön ayarlar");
     const chips = document.createElement("div");
     chips.className = "chips";
+    const clearSel = () => chips.querySelectorAll(".chip").forEach(x => x.classList.remove("sel"));
     Object.keys(ASPECTS).forEach(k => {
       const b = document.createElement("button");
       b.className = "chip" + (state.aspect === k ? " sel" : "");
       b.textContent = k;
       b.onclick = () => {
         state.aspect = k;
-        chips.querySelectorAll(".chip").forEach(x => x.classList.remove("sel"));
-        b.classList.add("sel");
+        clearSel(); b.classList.add("sel");
+        wIn.value = ASPECTS[k][0]; hIn.value = ASPECTS[k][1];
         applyAspect();
       };
       chips.appendChild(b);
     });
     body.appendChild(chips);
+
+    /* özel oran: klavyeyle en/boy gir (herhangi bir oran) */
+    subhead(body, "Özel oran (klavye)");
+    const cur = aspectWH();
+    const row = document.createElement("div");
+    row.className = "numRow";
+    row.innerHTML =
+      `<input type="number" inputmode="decimal" min="1" max="9999" step="1" value="${+cur[0].toFixed(3)}" style="flex:1;min-width:0;padding:9px 12px;border-radius:10px;background:var(--bg3);color:var(--text);border:1px solid transparent;font-size:14px">` +
+      `<span class="numSuffix" style="min-width:12px;text-align:center">:</span>` +
+      `<input type="number" inputmode="decimal" min="1" max="9999" step="1" value="${+cur[1].toFixed(3)}" style="flex:1;min-width:0;padding:9px 12px;border-radius:10px;background:var(--bg3);color:var(--text);border:1px solid transparent;font-size:14px">`;
+    const [wIn, hIn] = row.querySelectorAll("input");
+    body.appendChild(row);
+    const applyBtn = document.createElement("button");
+    applyBtn.className = "sheetBtn primary";
+    applyBtn.textContent = "Özel oranı uygula";
+    const commit = () => {
+      const w = parseFloat(wIn.value), h = parseFloat(hIn.value);
+      if (!(w > 0) || !(h > 0)) return;
+      state.aspect = `${w}:${h}`;
+      clearSel();
+      /* girilen oran bir ön ayarla birebir aynıysa onu vurgula */
+      Object.keys(ASPECTS).forEach((k, i) => {
+        if (Math.abs(ASPECTS[k][0] / ASPECTS[k][1] - w / h) < 1e-4) chips.children[i].classList.add("sel");
+      });
+      applyAspect();
+    };
+    applyBtn.onclick = commit;
+    [wIn, hIn].forEach(inp => inp.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); commit(); } }));
+    body.appendChild(applyBtn);
+    const note = document.createElement("p");
+    note.style.cssText = "font-size:10px;color:var(--dim);margin:6px 0 0";
+    note.textContent = "Örn. sinema için 21:9, klasik için 4:3, dikey uzun için 9:21 — ya da istediğin herhangi bir sayıyı gir.";
+    body.appendChild(note);
   });
 }
 /* seçilen oran + çözünürlükten çift sayıya yuvarlanmış piksel boyutu */
 function exportDims() {
-  const [rw, rh] = ASPECTS[state.aspect];
+  const [rw, rh] = aspectWH();
   let res = state.resolution;
   if (state.upscale) res = Math.min(Math.round(res * 1.5), 2880);
   const even = v => Math.round(v / 2) * 2;
@@ -3831,19 +3920,38 @@ $("#btnExport").onclick = () => {
     subhead(body, "Format");
     chipRow(body, { mp4: "MP4", webm: "WebM" }, state.format, k => { state.format = k; });
     subhead(body, "Çözünürlük");
-    chipRow(body, RES_OPTS, String(state.resolution), k => {
+    const resChips = chipRow(body, RES_OPTS, String(state.resolution), k => {
       state.resolution = parseInt(k);
+      if (resIn) resIn.value = state.resolution;
       applyAspect();
       updEst();
     });
+    const resIn = numRow(body, {
+      label: "Özel (kısa kenar)", value: state.resolution, min: 120, max: 4320, suffix: "px",
+      onApply: v => {
+        state.resolution = v;
+        syncChips(resChips, RES_OPTS, String(v));
+        applyAspect();
+        updEst();
+      },
+    });
     subhead(body, "Kare Hızı");
-    chipRow(body, FPS_OPTS, String(state.fps), k => {
+    const fpsChips = chipRow(body, FPS_OPTS, String(state.fps), k => {
       state.fps = parseInt(k);
+      if (fpsIn) fpsIn.value = state.fps;
       updEst();
+    });
+    const fpsIn = numRow(body, {
+      label: "Özel", value: state.fps, min: 1, max: 240, suffix: "fps",
+      onApply: v => {
+        state.fps = v;
+        syncChips(fpsChips, FPS_OPTS, String(v));
+        updEst();
+      },
     });
     const beta = document.createElement("p");
     beta.style.cssText = "font-size:10px;color:var(--dim);margin:10px 0 0";
-    beta.textContent = "β Beta: 2K/4K ve 90/120 fps bazı telefonlarda stabil çalışmayabilir; sorun olursa 1080p/60 fps ve altını kullan.";
+    beta.textContent = "β Beta: 2K/4K ve 90/120 fps (ve klavyeyle girilen daha yüksek değerler) bazı telefonlarda stabil çalışmayabilir; sorun olursa 1080p/60 fps ve altını kullan.";
     body.appendChild(beta);
 
     const up = document.createElement("button");
