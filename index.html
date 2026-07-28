@@ -639,7 +639,7 @@
 const $ = s => document.querySelector(s);
 /* Sürüm — her güncellemede artar; Pages'in yeni sürümü yayınlayıp
    yayınlamadığını buradan (Pisan Cut yanındaki rozetten) anlayabilirsin. */
-const APP_VERSION = "v2.4";
+const APP_VERSION = "v2.5";
 document.querySelectorAll(".ver").forEach(e => e.textContent = APP_VERSION);
 
 /* iOS/iPadOS (Apple WebKit) tespiti — iPad'ler kendini "Macintosh" gösterir,
@@ -4566,12 +4566,17 @@ function mkMp4(opts) {
 }
 
 /* ---------- WebGL GPU işleme geçişi ----------
-   Kodlanacak her kare GPU'da bir shader'dan geçirilir (keskinleştirme +
-   yüksek kaliteli örnekleme). Bu, ekran kartının 3B/işlem motorunu gerçekten
-   çalıştırır (Görev Yöneticisi'nde "3D" grafiğinde görünür) ve görüntüyü
-   netleştirir. Donanım video kodlayıcı (NVENC/QuickSync/AMF/VideoToolbox)
-   ayrı "Video Encode" motorunu kullanır — ikisi birlikte GPU'yu yükler. */
+   Kodlanacak her kare GPU'da AĞIR bir shader hattından geçer: iki geçişli
+   ayrılabilir Gauss bulanıklığı (geçiş başına 13 örnek) + unsharp mask
+   (netlik) + ince detay/doygunluk artışı. Bu, ekran kartının SHADER/CUDA
+   çekirdeklerini (Görev Yöneticisi'nde "3D"/"Compute" motoru) gerçekten
+   çalıştırır ve yük çözünürlükle büyür. Video kodlayıcı (NVENC vb.) ayrı
+   "Video Encode" motorunu kullanır — ikisi birlikte GPU'yu yükler.
+   Not: CUDA çekirdekleri tarayıcıdan YALNIZCA shader ile sürülebilir;
+   video çözme (NVDEC) ve kodlama (NVENC) ayrı sabit-işlev motorlarıdır. */
 let glPost = null;
+/* sigma≈3, yarıçap 6 için normalize Gauss ağırlıkları (0..6) */
+const GW = [0.1370, 0.1296, 0.1097, 0.0831, 0.0563, 0.0342, 0.01854];
 function getGLPost() {
   if (glPost !== null) return glPost;
   try {
@@ -4579,64 +4584,125 @@ function getGLPost() {
     const opts = { premultipliedAlpha: false, preserveDrawingBuffer: true, antialias: false, depth: false, stencil: false, powerPreference: "high-performance" };
     const gl = cv.getContext("webgl2", opts) || cv.getContext("webgl", opts);
     if (!gl) { glPost = false; return false; }
-    /* yazılım (donanımsız) GL ise geçişi KULLANMA — hızlandırmak yerine
-       yavaşlatır. Gerçek GPU'da (NVIDIA/AMD/Intel/Apple) çalışır. */
+    let renderer = "";
     try {
       const dbg = gl.getExtension("WEBGL_debug_renderer_info");
-      const rnd = (dbg && gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) || "").toLowerCase();
-      if (/swiftshader|software|llvmpipe|basic render|microsoft basic/.test(rnd)) { glPost = false; return false; }
+      renderer = (dbg && gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)) || "";
+      /* yazılım (donanımsız) GL ise geçişi KULLANMA — hızlandırmak yerine
+         yavaşlatır. Gerçek GPU'da (NVIDIA/AMD/Intel/Apple) çalışır. */
+      if (!window.__ALLOW_SW_GL && /swiftshader|software|llvmpipe|basic render|microsoft basic|mesa offscreen/i.test(renderer)) { glPost = false; return false; }
     } catch (_) {}
+    const W = GW.map(v => v.toFixed(6));
     const vs = `attribute vec2 p; varying vec2 uv; void main(){ uv=(p+1.0)*0.5; gl_Position=vec4(p,0.0,1.0); }`;
-    const fs = `precision highp float; varying vec2 uv; uniform sampler2D t; uniform vec2 texel; uniform float sharp;
+    /* geçiş 1: yatay Gauss bulanıklığı */
+    const fsBlur = `precision highp float; varying vec2 uv; uniform sampler2D t; uniform vec2 dir;
       void main(){
-        vec3 c = texture2D(t, uv).rgb;
-        vec3 n = texture2D(t, uv+vec2(0.0,-texel.y)).rgb + texture2D(t, uv+vec2(0.0,texel.y)).rgb
-               + texture2D(t, uv+vec2(-texel.x,0.0)).rgb + texture2D(t, uv+vec2(texel.x,0.0)).rgb;
-        vec3 o = c + sharp * (4.0*c - n);           // unsharp mask (keskinleştirme)
-        gl_FragColor = vec4(clamp(o,0.0,1.0), 1.0);
+        vec3 s = texture2D(t,uv).rgb*${W[0]};
+        s += (texture2D(t,uv+dir*1.0).rgb+texture2D(t,uv-dir*1.0).rgb)*${W[1]};
+        s += (texture2D(t,uv+dir*2.0).rgb+texture2D(t,uv-dir*2.0).rgb)*${W[2]};
+        s += (texture2D(t,uv+dir*3.0).rgb+texture2D(t,uv-dir*3.0).rgb)*${W[3]};
+        s += (texture2D(t,uv+dir*4.0).rgb+texture2D(t,uv-dir*4.0).rgb)*${W[4]};
+        s += (texture2D(t,uv+dir*5.0).rgb+texture2D(t,uv-dir*5.0).rgb)*${W[5]};
+        s += (texture2D(t,uv+dir*6.0).rgb+texture2D(t,uv-dir*6.0).rgb)*${W[6]};
+        gl_FragColor=vec4(s,1.0);
       }`;
-    const mk = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; };
-    const prog = gl.createProgram();
-    gl.attachShader(prog, mk(gl.VERTEX_SHADER, vs));
-    gl.attachShader(prog, mk(gl.FRAGMENT_SHADER, fs));
-    gl.linkProgram(prog);
-    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) { glPost = false; return false; }
-    gl.useProgram(prog);
+    /* geçiş 2: dikey Gauss (tam 2B bulanıklık) + orijinalle unsharp + detay */
+    const fsComb = `precision highp float; varying vec2 uv;
+      uniform sampler2D t; uniform sampler2D src; uniform vec2 dir; uniform float amount;
+      void main(){
+        vec3 b = texture2D(t,uv).rgb*${W[0]};
+        b += (texture2D(t,uv+dir*1.0).rgb+texture2D(t,uv-dir*1.0).rgb)*${W[1]};
+        b += (texture2D(t,uv+dir*2.0).rgb+texture2D(t,uv-dir*2.0).rgb)*${W[2]};
+        b += (texture2D(t,uv+dir*3.0).rgb+texture2D(t,uv-dir*3.0).rgb)*${W[3]};
+        b += (texture2D(t,uv+dir*4.0).rgb+texture2D(t,uv-dir*4.0).rgb)*${W[4]};
+        b += (texture2D(t,uv+dir*5.0).rgb+texture2D(t,uv-dir*5.0).rgb)*${W[5]};
+        b += (texture2D(t,uv+dir*6.0).rgb+texture2D(t,uv-dir*6.0).rgb)*${W[6]};
+        vec3 o = texture2D(src,uv).rgb;
+        vec3 sharp = o + amount*(o - b);                 // unsharp mask
+        float l = dot(sharp, vec3(0.299,0.587,0.114));   // hafif detay/doygunluk
+        sharp = clamp(mix(vec3(l), sharp, 1.06), 0.0, 1.0);
+        gl_FragColor = vec4(sharp, 1.0);
+      }`;
+    const mk = (type, s) => { const sh = gl.createShader(type); gl.shaderSource(sh, s); gl.compileShader(sh); return sh; };
+    const link = (fsSrc) => {
+      const pr = gl.createProgram();
+      gl.attachShader(pr, mk(gl.VERTEX_SHADER, vs));
+      gl.attachShader(pr, mk(gl.FRAGMENT_SHADER, fsSrc));
+      gl.linkProgram(pr);
+      if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) return null;
+      return pr;
+    };
+    const progBlur = link(fsBlur), progComb = link(fsComb);
+    if (!progBlur || !progComb) { glPost = false; return false; }
     const buf = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, buf);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, -1,1, 1,-1, 1,1]), gl.STATIC_DRAW);
-    const loc = gl.getAttribLocation(prog, "p");
-    gl.enableVertexAttribArray(loc);
-    gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
-    const tex = gl.createTexture();
-    gl.bindTexture(gl.TEXTURE_2D, tex);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    for (const pr of [progBlur, progComb]) {
+      gl.useProgram(pr);
+      const loc = gl.getAttribLocation(pr, "p");
+      gl.enableVertexAttribArray(loc);
+      gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+    }
+    const mkTex = () => {
+      const tx = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, tx);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      return tx;
+    };
+    const srcTex = mkTex(), midTex = mkTex();
+    const fbo = gl.createFramebuffer();
     glPost = {
-      cv, gl, tex,
-      uTexel: gl.getUniformLocation(prog, "texel"),
-      uSharp: gl.getUniformLocation(prog, "sharp"),
+      cv, gl, progBlur, progComb, srcTex, midTex, fbo, renderer, w: 0, h: 0,
+      uBlurDir: gl.getUniformLocation(progBlur, "dir"),
+      uCombDir: gl.getUniformLocation(progComb, "dir"),
+      uCombAmt: gl.getUniformLocation(progComb, "amount"),
+      uCombT: gl.getUniformLocation(progComb, "t"),
+      uCombSrc: gl.getUniformLocation(progComb, "src"),
     };
     return glPost;
   } catch (_) { glPost = false; return false; }
 }
-/* 2B tuvali GPU'da işleyip GL tuvalini döndürür (kodlama kaynağı) */
-function glProcess(src, w, h, sharp) {
+/* 2B tuvali GPU'da (iki geçişli unsharp) işleyip GL tuvalini döndürür */
+function glProcess(src, w, h, amount) {
   const g = getGLPost();
   if (!g) return null;
-  const { cv, gl, tex } = g;
-  if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+  const { cv, gl } = g;
+  if (g.w !== w || g.h !== h) {
+    cv.width = w; cv.height = h;
+    gl.bindTexture(gl.TEXTURE_2D, g.midTex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    g.w = w; g.h = h;
+  }
   gl.viewport(0, 0, w, h);
-  gl.bindTexture(gl.TEXTURE_2D, tex);
+  /* kaynağı yükle (2B tuval → srcTex) */
+  gl.bindTexture(gl.TEXTURE_2D, g.srcTex);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
   try { gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src); }
   catch (_) { return null; }
-  gl.uniform2f(g.uTexel, 1 / w, 1 / h);
-  gl.uniform1f(g.uSharp, sharp);
+  /* geçiş 1: yatay bulanıklık → midTex (FBO) */
+  gl.bindFramebuffer(gl.FRAMEBUFFER, g.fbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, g.midTex, 0);
+  gl.useProgram(g.progBlur);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, g.srcTex);
+  gl.uniform2f(g.uBlurDir, 1 / w, 0);
   gl.drawArrays(gl.TRIANGLES, 0, 6);
-  gl.flush();   // finish yerine: kareyi VideoFrame okurken tarayıcı tamamlar (bloklama yok)
+  /* geçiş 2: dikey bulanıklık + unsharp (orijinal srcTex) → tuval */
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.useProgram(g.progComb);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, g.midTex);
+  gl.uniform1i(g.uCombT, 0);
+  gl.activeTexture(gl.TEXTURE1);
+  gl.bindTexture(gl.TEXTURE_2D, g.srcTex);
+  gl.uniform1i(g.uCombSrc, 1);
+  gl.uniform2f(g.uCombDir, 0, 1 / h);
+  gl.uniform1f(g.uCombAmt, amount);
+  gl.drawArrays(gl.TRIANGLES, 0, 6);
+  gl.flush();
   return cv;
 }
 
@@ -4744,10 +4810,12 @@ async function fastRender(plan) {
   }
   if (!configured) { venc.configure(vconf); encMode = "oto"; }
 
-  /* GPU açık + WebGL varsa her kare GPU shader'ından geçer (keskinleştirme +
-     ekran kartının 3B motorunu yükler). */
-  const useGL = state.gpu && !!getGLPost();
-  const glSharp = state.upscale ? 0.5 : 0.28;   // upscale açıkken daha güçlü keskinleştir
+  /* GPU açık + WebGL varsa her kare ağır iki-geçişli GPU shader hattından
+     geçer (unsharp mask + detay; ekran kartının CUDA/3B çekirdeklerini yükler). */
+  const glp = state.gpu ? getGLPost() : false;
+  const useGL = !!glp;
+  const glRenderer = glp ? glp.renderer : "";
+  const glSharp = state.upscale ? 0.85 : 0.55;   // upscale açıkken daha güçlü keskinleştir
 
   /* kare üretici (60+ fps): her kare bir önceki ÇIKTI karesiyle
      harmanlanır (echo blend) — çoğaltılmış kaynak kareleri kademeli
@@ -4929,7 +4997,8 @@ async function fastRender(plan) {
     : !audioIncluded ? "YOK — ses kodlanamadı!"
     : opusInMp4 ? "Opus (⚠ iOS bunu MP4'te çalmaz!)"
     : plan.aKind === "aac" ? "AAC" : "Opus";
-  const gpuTag = `GPU:${state.gpu ? encMode + (useGL ? "+WebGL" : "") : "kapalı"}`;
+  const gpuName = glRenderer ? " (" + String(glRenderer).replace(/^ANGLE \(/, "").replace(/\)$/, "").slice(0, 48) + ")" : "";
+  const gpuTag = `GPU:${state.gpu ? encMode + (useGL ? "+WebGL" + gpuName : "") : "kapalı"}`;
   const timing = `${renderSec.toFixed(0)}sn · ${gpuTag} · ${LANES} hat · seek ${perFrame(tSeekMs)}ms/k · çiz ${perFrame(tDrawMs)}ms/k · bekle ${perFrame(tWaitMs)}ms/k`
     + (slowFrom >= 0 ? ` · yavaşlama ${slowFrom}. karede başladı` : "");
   lastExportInfo = `${ext.toUpperCase()} · Video: ${vName} · Ses: ${aName} · offline · ${timing}`;
