@@ -57,5 +57,6 @@ Ayarlar → Pages → dalı seç → yayınla.
 ## Sınırlamalar
 
 - Hızlı render WebCodecs gerektirir (Chrome/Edge/Android WebView 94+, Safari 16.4+ kısmi); yoksa dışa aktarma gerçek zamanlı sürer.
-- MP4 çıktı H.264+AAC destekleyen cihazlarda üretilir (çoğu telefon/masaüstü); yoksa otomatik WebM'e düşer. Dosya içi MP4 muxer sıkıştırılmamış (tek mdat) ISO-BMFF üretir.
+- MP4 çıktı H.264+AAC destekleyen cihazlarda üretilir (çoğu telefon/masaüstü); yoksa otomatik WebM'e düşer. Dosya içi MP4 muxer sıkıştırılmamış (tek mdat) ISO-BMFF üretir. iOS/iPadOS Opus'u MP4 içinde çalamadığından, bu cihazlarda AAC yoksa sesin gerçekten gelebilmesi için otomatik olarak gerçek zamanlı (native AAC) kayda geçilir.
+- **Dışa aktarma tanısı**: "Hazır!" ekranında küçük bir tanı satırı gösterilir (kullanılan video/ses codec'i + zamanlama dökümü: kare başına seek/çizim/bekleme süresi ve yavaşlamanın kaçıncı karede başladığı). Satıra dokununca panoya kopyalanır — cihaza özel dışa aktarma sorunlarını ayıklamak için.
 - Projeler tarayıcının IndexedDB deposunda tutulur; tarayıcı verilerini/site verilerini silersen projeler de silinir ve başka cihazdan erişilemez.

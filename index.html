@@ -630,8 +630,15 @@
 const $ = s => document.querySelector(s);
 /* Sürüm — her güncellemede artar; Pages'in yeni sürümü yayınlayıp
    yayınlamadığını buradan (Pisan Cut yanındaki rozetten) anlayabilirsin. */
-const APP_VERSION = "v2.0";
+const APP_VERSION = "v2.1";
 document.querySelectorAll(".ver").forEach(e => e.textContent = APP_VERSION);
+
+/* iOS/iPadOS (Apple WebKit) tespiti — iPad'ler kendini "Macintosh" gösterir,
+   bu yüzden dokunma noktası sayısıyla ayırt edilir. Opus sesi iOS'ta MP4'te
+   çalmaz; bu cihazlarda sessiz çıktıyı önlemek için kullanılır. */
+const IS_APPLE_WK =
+  /iP(hone|ad|od)/.test(navigator.platform || "") ||
+  (navigator.maxTouchPoints > 1 && /Mac|iP(hone|ad|od)/.test(navigator.userAgent || ""));
 const canvas = $("#canvas"), ctx = canvas.getContext("2d", { alpha: false, desynchronized: true });
 
 /* en-boy oranları (oran olarak; gerçek boyut çözünürlük seçimiyle hesaplanır) */
@@ -3917,7 +3924,11 @@ function exportDone(blob, ext) {
   dl.style.display = "block";
   $("#modalTitle").textContent = "Hazır! 🎉";
   $("#modalDesc").innerHTML = "Videon (" + (blob.size / 1048576).toFixed(1) + " MB) indirilmeye hazır." +
-    (lastExportInfo ? `<br><span style="font-size:10px;color:var(--dim)">${lastExportInfo}</span>` : "");
+    (lastExportInfo ? `<br><span id="diagLine" title="Kopyalamak için dokun" style="font-size:10px;color:var(--dim);cursor:pointer;text-decoration:underline dotted">${lastExportInfo} · (kopyalamak için dokun)</span>` : "");
+  const diag = $("#diagLine");
+  if (diag) diag.onclick = () => {
+    navigator.clipboard?.writeText(lastExportInfo).then(() => toast("Tanı kopyalandı — bana yapıştırabilirsin"), () => {});
+  };
   $("#modalCancel").textContent = "Kapat";
   $("#progressInner").style.width = "100%";
 }
@@ -3939,18 +3950,9 @@ async function startExport() {
     state.overlays.some(o => o.kind === "pip" && o.type === "video" && o.volume > 0) ||
     state.musics.length > 0;
 
-  /* iOS/iPadOS = WebKit. Orada kendi MP4 muxer'ımız yerine cihazın
-     NATIVE kaydedicisi kullanılır (MP4'ü H.264+AAC ile doğru, sesli ve
-     donanım hızında üretir; kare kare sarma darboğazı da yok).
-     Masaüstü/Android offline WebCodecs yolunda kalır. */
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-    (navigator.maxTouchPoints > 1 && /Macintosh|Mac OS/.test(navigator.userAgent));
-  const nativeMp4 = window.MediaRecorder && MediaRecorder.isTypeSupported &&
-    (MediaRecorder.isTypeSupported("video/mp4") || MediaRecorder.isTypeSupported("video/mp4;codecs=avc1.42E01E,mp4a.40.2"));
-  if (state.fastMode || (state.format === "mp4" && isIOS && nativeMp4)) {
-    await realtimeExport();
-    return;
-  }
+  /* Gerçek zamanlı yalnızca kullanıcı Hızlı Mod'u açarsa (varsayılan:
+     kare kare temiz offline render — CapCut gibi). */
+  if (state.fastMode) { await realtimeExport(); return; }
 
   if (window.VideoEncoder) {
     const plan = await buildExportPlan(hasAudio);
@@ -3958,6 +3960,13 @@ async function startExport() {
        korumak için cihazın yerleşik kaydedicisine (gerçek zamanlı) geç */
     if (plan && plan.audioNoEnc) {
       toast("Bu cihaz kare kare ses kodlamayı desteklemiyor; sesli çıktı için gerçek zamanlı kayıt kullanılıyor");
+      await realtimeExport();
+      return;
+    }
+    /* iOS + yalnızca Opus: offline MP4 sesi bu cihazda çalmaz → gerçek
+       zamanlı (AAC) kayda geç ki ses gerçekten gelsin */
+    if (plan && plan.opusMp4Unplayable) {
+      toast("Bu cihaz MP4 için AAC ses kodlamayı desteklemiyor; sesin çalabilmesi için gerçek zamanlı kayıt kullanılıyor");
       await realtimeExport();
       return;
     }
@@ -4004,8 +4013,12 @@ async function buildExportPlan(hasAudio) {
     else if (await audSup("opus")) { aEnc = "opus"; aKind = "opus"; }
     else audioNoEnc = true;   // hiçbir ses kodlayıcı desteklenmiyor
   }
+  /* iOS, Opus'u MP4 içinde ÇALAMAZ → offline yol burada sessiz kalır.
+     Böyle bir cihazda tek çalışan ses yolu native kaydedici (gerçek zamanlı,
+     AAC). Sessiz video vermektense oraya yönlendir. */
+  const opusMp4Unplayable = IS_APPLE_WK && container === "mp4" && aKind === "opus";
   if (state.format === "mp4" && container !== "mp4") toast("Bu cihazda MP4 kodlama yok, WebM üretiliyor");
-  return { vEnc, vKind, container, aEnc, aKind, audioNoEnc };
+  return { vEnc, vKind, container, aEnc, aKind, audioNoEnc, opusMp4Unplayable };
 }
 
 /* ---------- hızlı render: yardımcılar ---------- */
@@ -4538,16 +4551,26 @@ async function fastRender(plan) {
     prevOutCv.height = state.exportH;
   }
 
+  /* zamanlama tanısı: darboğaz seek mi kodlama mı, ve yavaşlama nerede
+     başlıyor? (iPad'de kesin veri için — kullanıcı bu satırı bize iletir) */
+  const t0render = performance.now();
+  let tSeekMs = 0, tDrawMs = 0, tWaitMs = 0;
+  let slowFrom = -1;   // ms/kare ilk kez 10x ortalamayı aştığı kare
+
   for (let i = 0; i < frames; i++) {
     if (exportAbort) { venc.close(); throw new Error("abort"); }
     if (encError) { throw encError; }
+    const tFrame0 = performance.now();
     const t = Math.min(i / fps, Math.max(total - .001, 0));
     const loc = locate(t);
     if (loc && loc.clip.type === "video") {
+      const s0 = performance.now();
       await seekVideoExact(loc.clip.el, loc.clip.in + loc.offset * loc.clip.speed);
+      tSeekMs += performance.now() - s0;
     }
     await renderSeekExtras(t);
     state.t = t;
+    const d0 = performance.now();
     drawFrame();
     if (useFrameGen) {
       if (i > 0) {
@@ -4563,6 +4586,7 @@ async function fastRender(plan) {
     });
     venc.encode(frame, { keyFrame: i % (fps * 5) === 0 });
     frame.close();
+    tDrawMs += performance.now() - d0;
     /* bir sonraki kare farklı klipteyse o klibi beklemeden ön-ısıt */
     if (i + 1 < frames) {
       const nl = locate(Math.min((i + 1) / fps, total - .001));
@@ -4572,6 +4596,7 @@ async function fastRender(plan) {
     }
     /* kodlayıcı kuyruğu şişmesin: uyku yerine dequeue olayını bekle
        (CPU boşta durmaz, kuyruk boşalır boşalmaz devam edilir) */
+    const w0 = performance.now();
     const queueCap = state.exportW * state.exportH > 1920 * 1080 ? 8 : 20;
     while (venc.encodeQueueSize > queueCap && !encError && !exportAbort) {
       await Promise.race([
@@ -4579,9 +4604,19 @@ async function fastRender(plan) {
         new Promise(r => setTimeout(r, 50)),
       ]);
     }
+    tWaitMs += performance.now() - w0;
+    /* yavaşlama tespiti: bu karenin süresi o ana kadarki ortalamanın
+       6 katından fazlaysa "yavaşlama başladı" olarak işaretle */
+    const frameMs = performance.now() - tFrame0;
+    if (slowFrom < 0 && i > 20) {
+      const avgSoFar = (performance.now() - t0render) / (i + 1);
+      if (frameMs > avgSoFar * 6) slowFrom = i;
+    }
     $("#progressInner").style.width = (i / frames * 100).toFixed(1) + "%";
     $("#modalDesc").textContent = `Kare ${i + 1} / ${frames}`;
   }
+  const renderSec = (performance.now() - t0render) / 1000;
+  const perFrame = (ms) => (ms / frames).toFixed(1);
   await venc.flush();
   venc.close();
 
@@ -4609,12 +4644,17 @@ async function fastRender(plan) {
     blob = webmMuxer.finish({ hasAudio: audioIncluded, opusHead });
     ext = "webm";
   }
-  /* tanı: hangi codec + ses gerçekten eklendi mi (iPad'de sorun ayıklama) */
+  /* tanı: hangi codec + ses gerçekten eklendi mi + zamanlama dökümü.
+     iPad'de sorun ayıklama: kullanıcı bu satırı bize iletir, tahmin bitsin. */
   const vName = plan.vKind === "avc" ? "H.264" : plan.vKind === "vp9" ? "VP9" : "VP8";
+  const opusInMp4 = isMp4 && audioIncluded && plan.aKind === "opus";
   const aName = !withAudio ? "yok (projede ses değil)"
-    : audioIncluded ? (plan.aKind === "aac" ? "AAC" : "Opus")
-    : "YOK — ses kodlanamadı!";
-  lastExportInfo = `${ext.toUpperCase()} · Video: ${vName} · Ses: ${aName} · kare kare (offline)`;
+    : !audioIncluded ? "YOK — ses kodlanamadı!"
+    : opusInMp4 ? "Opus (⚠ iOS bunu MP4'te çalmaz!)"
+    : plan.aKind === "aac" ? "AAC" : "Opus";
+  const timing = `${renderSec.toFixed(0)}sn · seek ${perFrame(tSeekMs)}ms/k · çiz ${perFrame(tDrawMs)}ms/k · bekle ${perFrame(tWaitMs)}ms/k`
+    + (slowFrom >= 0 ? ` · yavaşlama ${slowFrom}. karede başladı` : "");
+  lastExportInfo = `${ext.toUpperCase()} · Video: ${vName} · Ses: ${aName} · offline · ${timing}`;
   audioBufCache.clear();   // çözülmüş ses PCM'ini bellekten boşalt
   finishExportUI();
   exportDone(blob, ext);
