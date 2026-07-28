@@ -630,7 +630,7 @@
 const $ = s => document.querySelector(s);
 /* Sürüm — her güncellemede artar; Pages'in yeni sürümü yayınlayıp
    yayınlamadığını buradan (Pisan Cut yanındaki rozetten) anlayabilirsin. */
-const APP_VERSION = "v1.8";
+const APP_VERSION = "v1.9";
 document.querySelectorAll(".ver").forEach(e => e.textContent = APP_VERSION);
 const canvas = $("#canvas"), ctx = canvas.getContext("2d", { alpha: false, desynchronized: true });
 
@@ -4267,26 +4267,28 @@ function mkMp4(opts) {
 
   return {
     addVideo(chunk) {
+      /* örnek verisini ANINDA Blob'a al (tarayıcı diske taşıyabilir → RAM'de
+         yalnızca boyut/süre meta verisi kalır; uzun videoda bellek düşük) */
       const d = new Uint8Array(chunk.byteLength); chunk.copyTo(d);
       const dur = chunk.duration ? Math.round(chunk.duration / 1e6 * VTS) : Math.round(VTS / 30);
-      vSamples.push({ data: d, dur, key: chunk.type === "key" });
+      vSamples.push({ blob: new Blob([d]), size: d.length, dur, key: chunk.type === "key" });
     },
     addAudio(chunk) {
       const d = new Uint8Array(chunk.byteLength); chunk.copyTo(d);
       const dur = chunk.duration ? Math.round(chunk.duration / 1e6 * 48000) : 1024;
-      aSamples.push({ data: d, dur });
+      aSamples.push({ blob: new Blob([d]), size: d.length, dur });
     },
     finish(fin) {
       const { vcodec, vdesc, acodec, adesc, sampleRate = 48000, channels = 2 } = fin;
       const hasAudio = aSamples.length > 0;
-      const vBytes = cat(vSamples.map(s => s.data));
-      const aBytes = hasAudio ? cat(aSamples.map(s => s.data)) : new Uint8Array(0);
+      const vBytesLen = vSamples.reduce((a, s) => a + s.size, 0);
+      const aBytesLen = aSamples.reduce((a, s) => a + s.size, 0);
 
       const ftyp = box("ftyp", enc.encode("isom"), u32(0x200), enc.encode("isomiso2avc1mp41"));
-      const mdatSize = 8 + vBytes.length + aBytes.length;
-      const mdat = cat([u32(mdatSize), enc.encode("mdat"), vBytes, aBytes]);
+      const mdatSize = 8 + vBytesLen + aBytesLen;
+      const mdatHeader = cat([u32(mdatSize), enc.encode("mdat")]);
       const vChunkOff = ftyp.length + 8;
-      const aChunkOff = vChunkOff + vBytes.length;
+      const aChunkOff = vChunkOff + vBytesLen;
 
       const vDurTotal = vSamples.reduce((a, s) => a + s.dur, 0);
       const aDurTotal = aSamples.reduce((a, s) => a + s.dur, 0);
@@ -4302,7 +4304,7 @@ function mkMp4(opts) {
         }
         return fbox("stts", 0, 0, u32(runs.length), ...runs.map(r => cat([u32(r.count), u32(r.dur)])));
       };
-      const stsz = samples => fbox("stsz", 0, 0, u32(0), u32(samples.length), ...samples.map(s => u32(s.data.length)));
+      const stsz = samples => fbox("stsz", 0, 0, u32(0), u32(samples.length), ...samples.map(s => u32(s.size)));
       const stsc = fbox("stsc", 0, 0, u32(1), cat([u32(1), u32(0), u32(1)]));  // sonradan doldurulur
       const stscN = n => fbox("stsc", 0, 0, u32(1), cat([u32(1), u32(n), u32(1)]));
       const stco = off => fbox("stco", 0, 0, u32(1), u32(off));
@@ -4409,7 +4411,14 @@ function mkMp4(opts) {
           new Uint8Array(24), u32(traks.length + 1)),
         ...traks);
 
-      return new Blob([ftyp, mdat, moov], { type: "video/mp4" });
+      /* dosyayı Blob parçalarından kur: büyük örnek verisi Blob'larda
+         (diske taşınabilir), RAM'de yalnızca kutular. Sıra: ftyp + mdat
+         başlığı + tüm video örnekleri + tüm ses örnekleri + moov */
+      const parts = [ftyp, mdatHeader];
+      for (const s of vSamples) parts.push(s.blob);
+      for (const s of aSamples) parts.push(s.blob);
+      parts.push(moov);
+      return new Blob(parts, { type: "video/mp4" });
     },
   };
 }
