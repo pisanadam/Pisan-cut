@@ -406,6 +406,11 @@
     background:var(--bg2); border:1px solid var(--line); border-radius:14px;
     padding:12px 14px; margin-bottom:18px;
   }
+  .ver {
+    font-size:11px; font-weight:600; color:var(--accent);
+    background:var(--bg3); border-radius:6px; padding:2px 7px; margin-left:2px;
+    letter-spacing:.3px;
+  }
   #proToggleRow .ptitle { font-size:13px; font-weight:700; }
   #proToggleRow .psub { font-size:11px; color:var(--dim); margin-top:2px; }
   .switch {
@@ -482,7 +487,7 @@
 <body>
 
 <header id="topbar">
-  <div class="brand"><button id="btnHome" title="Projelere dön">‹</button><span class="logo">P</span> Pisan Cut</div>
+  <div class="brand"><button id="btnHome" title="Projelere dön">‹</button><span class="logo">P</span> Pisan Cut<span class="ver"></span></div>
   <button id="btnExport" disabled>Dışa Aktar</button>
 </header>
 
@@ -561,7 +566,7 @@
 
 <div id="home">
   <div id="homeScroll">
-    <div id="homeBrand"><span class="logo">P</span> Pisan Cut<span style="flex:1"></span><button id="btnFullscreen" title="Tam ekran">⛶</button></div>
+    <div id="homeBrand"><span class="logo">P</span> Pisan Cut<span class="ver"></span><span style="flex:1"></span><button id="btnFullscreen" title="Tam ekran">⛶</button></div>
     <div id="proToggleRow">
       <div>
         <div class="ptitle">🖥️ Profesyonel Mod</div>
@@ -623,6 +628,10 @@
    ========================================================= */
 
 const $ = s => document.querySelector(s);
+/* Sürüm — her güncellemede artar; Pages'in yeni sürümü yayınlayıp
+   yayınlamadığını buradan (Pisan Cut yanındaki rozetten) anlayabilirsin. */
+const APP_VERSION = "v1.5";
+document.querySelectorAll(".ver").forEach(e => e.textContent = APP_VERSION);
 const canvas = $("#canvas"), ctx = canvas.getContext("2d", { alpha: false, desynchronized: true });
 
 /* en-boy oranları (oran olarak; gerçek boyut çözünürlük seçimiyle hesaplanır) */
